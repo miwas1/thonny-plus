@@ -5,7 +5,7 @@ Target only Windows 10/11 x86-64. Stage the private layout documented in
 
 ## One-command build on Windows Server
 
-Install Python 3.14 x64 with pip and Inno Setup 6 on a 64-bit Windows Server.
+Install Python 3.13 x64 with pip and Inno Setup 6 on a 64-bit Windows Server.
 Git is optional and is used only to record the commit in release metadata. From
 the repository root in PowerShell, run:
 

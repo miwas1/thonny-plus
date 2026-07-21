@@ -45,7 +45,7 @@ if (Test-Path -LiteralPath $buildRoot) {
 
 $pythonCommandInfo = Get-Command $PythonCommand -ErrorAction SilentlyContinue
 if (-not $pythonCommandInfo) {
-    throw "Python 3.14 x64 was not found. Install it and ensure '$PythonCommand' resolves to python.exe."
+    throw "Python 3.13 x64 was not found. Install it and ensure '$PythonCommand' resolves to python.exe."
 }
 $python = $pythonCommandInfo.Source
 $pythonInfo = & $python -c "import json,struct,sys; print(json.dumps({'version': list(sys.version_info[:3]), 'bits': struct.calcsize('P') * 8}))"
@@ -53,8 +53,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not inspect build Python: $python"
 }
 $pythonDetails = $pythonInfo | ConvertFrom-Json
-if ($pythonDetails.version[0] -ne 3 -or $pythonDetails.version[1] -ne 14 -or $pythonDetails.bits -ne 64) {
-    throw "The build requires Python 3.14 x64. Found $($pythonDetails.version -join '.') ($($pythonDetails.bits)-bit)."
+if ($pythonDetails.version[0] -ne 3 -or $pythonDetails.version[1] -ne 13 -or $pythonDetails.bits -ne 64) {
+    throw "The build requires Python 3.13 x64. Found $($pythonDetails.version -join '.') ($($pythonDetails.bits)-bit)."
 }
 & $python -m pip --version | Out-Null
 if ($LASTEXITCODE -ne 0) {

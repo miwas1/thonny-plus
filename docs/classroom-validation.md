@@ -31,3 +31,8 @@ The same six gates are available for a Windows Server build through
 `build-windows-classroom.ps1`. Both PowerShell build scripts pass the Windows
 PowerShell parser; downloading and installer creation remain intentionally
 deferred until that entry point runs on the build server.
+
+The Windows Server and GitHub Actions build entry points use Python 3.13 x64.
+After staging the separately pinned learner runtime, the build Python bootstraps
+pip into that private runtime so dependency wheels are resolved by the bundled
+interpreter rather than by the build interpreter.

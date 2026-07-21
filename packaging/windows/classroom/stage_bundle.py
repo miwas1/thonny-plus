@@ -83,7 +83,11 @@ def install_thonny(app: Path) -> None:
     # default. Enable only this private install; no global PATH or Python state
     # is changed on the build machine or learner computer.
     for pth in thonny_root.glob("python*._pth"):
-        lines = [line for line in pth.read_text(encoding="utf-8").splitlines() if line.strip()]
+        lines = [
+            line
+            for line in pth.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         if "Lib/site-packages" not in lines:
             lines.append("Lib/site-packages")
         lines = ["import site" if line == "#import site" else line for line in lines]
@@ -96,19 +100,47 @@ def install_thonny(app: Path) -> None:
         if source.is_file():
             shutil.copy2(source, site_packages / "thonny" / filename)
     shutil.copy2(
-        REPOSITORY / "packaging" / "windows" / "ThonnyRunner314" / "x64" / "Release" / "thonny.exe",
+        REPOSITORY
+        / "packaging"
+        / "windows"
+        / "ThonnyRunner314"
+        / "x64"
+        / "Release"
+        / "thonny.exe",
         thonny_root / "thonny.exe",
     )
-    shutil.copy2(REPOSITORY / "packaging" / "windows" / "thonny_python.ini", thonny_root)
+    shutil.copy2(
+        REPOSITORY / "packaging" / "windows" / "thonny_python.ini", thonny_root
+    )
     shutil.copy2(REPOSITORY / "packaging" / "portable_thonny.ini", thonny_root)
 
 
 def install_dependencies(app: Path) -> None:
     site_packages = app / "thonny" / "Lib" / "site-packages"
+    embedded_python = app / "thonny" / "python.exe"
     requirements = REPOSITORY / "packaging" / "requirements-regular-bundle.txt"
+    # The build entry point intentionally requires Python 3.13, while the
+    # learner runtime is the separately pinned embeddable Python distribution.
+    # Bootstrap pip as pure Python, then let the embedded interpreter resolve
+    # its own compatible wheels and environment markers.
     subprocess.run(
         [
             sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-warn-script-location",
+            "--upgrade",
+            "--target",
+            str(site_packages),
+            "pip",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            str(embedded_python),
             "-m",
             "pip",
             "install",
@@ -123,7 +155,7 @@ def install_dependencies(app: Path) -> None:
     )
     subprocess.run(
         [
-            sys.executable,
+            str(embedded_python),
             "-m",
             "pip",
             "install",
@@ -137,7 +169,9 @@ def install_dependencies(app: Path) -> None:
     )
 
 
-def write_licenses(app: Path, extracted: Path, manifest: dict[str, dict[str, str]]) -> None:
+def write_licenses(
+    app: Path, extracted: Path, manifest: dict[str, dict[str, str]]
+) -> None:
     licenses = app / "licenses"
     licenses.mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPOSITORY / "THIRD_PARTY_NOTICES.md", licenses)
@@ -167,7 +201,9 @@ def write_licenses(app: Path, extracted: Path, manifest: dict[str, dict[str, str
 def stage(app: Path, cache: Path, install_deps: bool, resume: bool = False) -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     downloads = {
-        name: download(item["url"], cache / Path(item["url"].split("?")[0]).name, item["sha256"])
+        name: download(
+            item["url"], cache / Path(item["url"].split("?")[0]).name, item["sha256"]
+        )
         for name, item in manifest.items()
     }
     if app.exists() and not resume:
@@ -193,7 +229,9 @@ def stage(app: Path, cache: Path, install_deps: bool, resume: bool = False) -> N
     (app.parent / "checksums.json").write_text(
         json.dumps(checksums, indent=2) + "\n", encoding="utf-8"
     )
-    (app / "COMPONENTS.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (app / "COMPONENTS.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def main() -> int:
@@ -202,10 +240,17 @@ def main() -> int:
     parser.add_argument("--cache", type=Path, default=REPOSITORY / ".classroom-cache")
     parser.add_argument("--skip-dependencies", action="store_true")
     parser.add_argument(
-        "--resume", action="store_true", help="Reuse an existing partial bundle after a failed run"
+        "--resume",
+        action="store_true",
+        help="Reuse an existing partial bundle after a failed run",
     )
     args = parser.parse_args()
-    stage(args.app.resolve(), args.cache.resolve(), not args.skip_dependencies, args.resume)
+    stage(
+        args.app.resolve(),
+        args.cache.resolve(),
+        not args.skip_dependencies,
+        args.resume,
+    )
     print(f"Staged bundle: {args.app.resolve()}")
     return 0
 

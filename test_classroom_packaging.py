@@ -75,9 +75,20 @@ class PackagingGateTests(unittest.TestCase):
         self.assertIn('"smoke_bundle.py"', script)
         self.assertIn("--with-model", script)
         self.assertIn('"build_installer.ps1"', script)
+        self.assertIn("version[1] -ne 13", script)
+        self.assertNotIn("version[1] -ne 14", script)
         self.assertIn("/.classroom-build/", ignore)
         self.assertIn("/.classroom-cache/", ignore)
         self.assertIn("*.gguf", ignore)
+
+        workflow = (
+            root / ".github" / "workflows" / "release-windows-classroom.yml"
+        ).read_text(encoding="utf-8-sig")
+        self.assertIn('python-version: "3.13"', workflow)
+
+        stager = (MODULE_DIR / "stage_bundle.py").read_text(encoding="utf-8")
+        self.assertIn('embedded_python = app / "thonny" / "python.exe"', stager)
+        self.assertIn("str(embedded_python)", stager)
 
 
 if __name__ == "__main__":
