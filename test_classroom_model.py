@@ -3,7 +3,12 @@ import unittest
 from unittest.mock import patch
 
 from thonny.plugins.classroom.adapters import Diagnostic
-from thonny.plugins.classroom.model_worker import extract_response, make_prompt, run
+from thonny.plugins.classroom.model_worker import (
+    FIELDS,
+    extract_response,
+    make_prompt,
+    run,
+)
 from thonny.plugins.classroom.tutor import build_request, context_from_run
 
 
@@ -64,11 +69,14 @@ class ClassroomModelWorkerTests(unittest.TestCase):
         request = build_request(self.diagnostic, "hint", "beginner", 0)
         self.assertEqual(run("llama-cli.exe", "model.gguf", request, 30), expected)
         command = run_process.call_args.args[0]
-        self.assertEqual(command[command.index("-n") + 1], "160")
+        self.assertEqual(command[command.index("-n") + 1], "256")
         self.assertEqual(command[command.index("-c") + 1], "2048")
         self.assertIn("-t", command)
         self.assertIn("-cnv", command)
         self.assertIn("-st", command)
+        schema = json.loads(command[command.index("-j") + 1])
+        self.assertEqual(set(schema["required"]), set(FIELDS))
+        self.assertFalse(schema["additionalProperties"])
 
 
 if __name__ == "__main__":

@@ -14,6 +14,15 @@ import sys
 from typing import Any
 
 FIELDS = ("explanation", "concept", "question", "hint")
+RESPONSE_SCHEMA = json.dumps(
+    {
+        "type": "object",
+        "properties": {field: {"type": "string"} for field in FIELDS},
+        "required": list(FIELDS),
+        "additionalProperties": False,
+    },
+    separators=(",", ":"),
+)
 
 
 def make_prompt(request: dict[str, Any]) -> str:
@@ -45,7 +54,11 @@ def extract_response(output: str) -> dict[str, str]:
             continue
         if isinstance(value, dict) and all(field in value for field in FIELDS):
             return {field: str(value[field]).strip() for field in FIELDS}
-    raise ValueError("Local tutor did not return the required structured response")
+    tail = output.strip()[-2000:]
+    raise ValueError(
+        "Local tutor did not return the required structured response. "
+        f"Output tail: {tail!r}"
+    )
 
 
 def run(
@@ -59,7 +72,7 @@ def run(
         "-p",
         make_prompt(request),
         "-n",
-        "160",
+        "256",
         "-c",
         "2048",
         "-b",
@@ -68,15 +81,23 @@ def run(
         str(threads),
         "-s",
         "42",
+        "-j",
+        RESPONSE_SCHEMA,
         "--temp",
         "0.2",
         "-cnv",
         "-st",
         "--no-display-prompt",
     ]
-    completed = subprocess.run(
-        command, text=True, capture_output=True, timeout=timeout, check=True
-    )
+    try:
+        completed = subprocess.run(
+            command, text=True, capture_output=True, timeout=timeout, check=True
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(f"llama-cli exceeded its {timeout:g}-second limit") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "no llama-cli output").strip()[-4000:]
+        raise RuntimeError(f"llama-cli failed: {detail}") from exc
     return extract_response(completed.stdout)
 
 
