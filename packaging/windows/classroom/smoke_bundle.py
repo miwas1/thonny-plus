@@ -50,14 +50,44 @@ def exercise_python(app: Path) -> dict[str, object]:
 
 def exercise_language_services(app: Path) -> dict[str, str]:
     python = app / "thonny" / "python.exe"
+    initialize = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"processId": None, "rootUri": None, "capabilities": {}},
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    shutdown = json.dumps(
+        {"jsonrpc": "2.0", "id": 2, "method": "shutdown", "params": None},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    exit_notification = json.dumps(
+        {"jsonrpc": "2.0", "method": "exit", "params": None}, separators=(",", ":")
+    ).encode("utf-8")
+
+    def frame(body: bytes) -> bytes:
+        return f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+
     basedpyright = subprocess.run(
-        [str(python), "-c", "import basedpyright.langserver"],
-        text=True,
+        [
+            str(python),
+            "-c",
+            "from basedpyright.langserver import main; main()",
+            "--stdio",
+        ],
+        input=frame(initialize) + frame(shutdown) + frame(exit_notification),
         capture_output=True,
         timeout=30.0,
     )
-    if basedpyright.returncode != 0:
-        raise RuntimeError(f"Basedpyright import failed: {basedpyright.stderr}")
+    if (
+        basedpyright.returncode != 0
+        or b"Content-Length:" not in basedpyright.stdout
+        or b'"capabilities"' not in basedpyright.stdout
+    ):
+        detail = basedpyright.stderr.decode("utf-8", errors="replace")
+        raise RuntimeError(f"Basedpyright language-server startup failed: {detail}")
     ruff = subprocess.run(
         [str(python), "-m", "ruff", "--version"],
         text=True,
@@ -115,7 +145,9 @@ def exercise_model(app: Path) -> dict[str, object]:
     version_text = (version.stdout or version.stderr).strip()
     return {
         "status": "passed",
-        "llama_cpp": version_text.splitlines()[0] if version_text else "version unavailable",
+        "llama_cpp": version_text.splitlines()[0]
+        if version_text
+        else "version unavailable",
         "worker_starts": 1,
         "cold_seconds": round(first_seconds, 2),
         "warm_seconds": round(warm_seconds, 2),

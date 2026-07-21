@@ -430,7 +430,7 @@ class Workbench(tk.Tk):
         thonny.set_logging_level()
 
     def get_main_language_server_proxy(self) -> Optional[LanguageServerProxy]:
-        if self._ls_proxies:
+        if self._ls_proxies and self._ls_proxies[0].is_initialized():
             return self._ls_proxies[0]
         return None
 

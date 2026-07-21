@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from thonny.plugins import basedpyright
@@ -22,6 +23,7 @@ from thonny.plugins.classroom.tutor import (
     select_tutor_action,
 )
 from thonny.plugins.classroom.ui import ClassroomView
+from thonny.workbench import Workbench
 
 
 class ClassroomTests(unittest.TestCase):
@@ -178,6 +180,42 @@ class ClassroomTests(unittest.TestCase):
             basedpyright.load_plugin()
 
         workbench.assert_not_called()
+
+    def test_basedpyright_fallback_calls_the_published_entry_point(self):
+        proxy = basedpyright.BasedpyrightProxy.__new__(basedpyright.BasedpyrightProxy)
+        with (
+            patch.object(basedpyright.shutil, "which", return_value=None),
+            patch.object(
+                basedpyright.importlib.util,
+                "find_spec",
+                return_value=SimpleNamespace(),
+            ),
+            patch.object(basedpyright, "create_frontend_python_process") as create,
+        ):
+            proxy._create_server_process()
+
+        command = create.call_args.args[0]
+        self.assertEqual(command[0], "-c")
+        self.assertIn("basedpyright.langserver import main; main()", command[1])
+        self.assertEqual(command[2], "--stdio")
+        self.assertNotIn("-m", command)
+
+    def test_closed_primary_language_server_is_not_returned_to_editor_plugins(self):
+        closed = MagicMock()
+        closed.is_initialized.return_value = False
+        workbench = SimpleNamespace(_ls_proxies=[closed])
+        self.assertIsNone(Workbench.get_main_language_server_proxy(workbench))
+
+        live = MagicMock()
+        live.is_initialized.return_value = True
+        workbench._ls_proxies = [live]
+        self.assertIs(Workbench.get_main_language_server_proxy(workbench), live)
+
+        highlighter = (
+            Path(__file__).parent / "thonny" / "plugins" / "highlight_names.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("except RuntimeError:", highlighter)
+        self.assertIn("must never produce an error dialog", highlighter)
 
     def test_native_toplevel_exception_triggers_contextual_ai(self):
         view = ClassroomView.__new__(ClassroomView)

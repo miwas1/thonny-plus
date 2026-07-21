@@ -174,6 +174,8 @@ class PackagingGateTests(unittest.TestCase):
         self.assertIn("warm_seconds", smoke)
         self.assertIn("llama-server.exe", smoke)
         self.assertIn("def exercise_language_services", smoke)
+        self.assertIn("from basedpyright.langserver import main; main()", smoke)
+        self.assertIn("b'\"capabilities\"'", smoke)
 
 
 if __name__ == "__main__":

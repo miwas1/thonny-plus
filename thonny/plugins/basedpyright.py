@@ -83,12 +83,14 @@ class BasedpyrightProxy(LanguageServerProxy):
     def _create_server_process(self) -> subprocess.Popen[bytes]:
         server_path = shutil.which("basedpyright-langserver")
         if server_path is None:
-            try:
-                import basedpyright.langserver  # noqa: F401
-            except ImportError as exc:
-                raise UserError("Can't find basedpyright-langserver") from exc
+            if importlib.util.find_spec("basedpyright") is None:
+                raise UserError("Can't find basedpyright-langserver")
             return create_frontend_python_process(
-                ["-m", "basedpyright.langserver", "--stdio"],
+                [
+                    "-c",
+                    "from basedpyright.langserver import main; main()",
+                    "--stdio",
+                ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
