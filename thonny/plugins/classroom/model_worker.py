@@ -15,7 +15,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 FIELDS = ("explanation", "concept", "question", "hint")
 FIELD_MAX_CHARS = {
@@ -24,15 +24,20 @@ FIELD_MAX_CHARS = {
     "question": 120,
     "hint": 120,
 }
-RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        field: {"type": "string", "maxLength": FIELD_MAX_CHARS[field]}
-        for field in FIELDS
-    },
-    "required": list(FIELDS),
-    "additionalProperties": False,
-}
+
+
+def response_schema(fields: tuple[str, ...]) -> dict[str, object]:
+    if not fields or any(field not in FIELDS for field in fields):
+        raise ValueError(f"Unsupported response fields: {fields!r}")
+    return {
+        "type": "object",
+        "properties": {
+            field: {"type": "string", "maxLength": FIELD_MAX_CHARS[field]}
+            for field in fields
+        },
+        "required": list(fields),
+        "additionalProperties": False,
+    }
 
 
 def make_prompt(request: dict[str, Any]) -> str:
@@ -41,12 +46,8 @@ def make_prompt(request: dict[str, Any]) -> str:
         "action_instruction": request["action_instruction"],
         "lesson_level": request["lesson_level"],
         "previous_hint_count": request["previous_hint_count"],
-        "field_word_limits": {
-            "explanation": 25,
-            "concept": 15,
-            "question": 20,
-            "hint": 20,
-        },
+        "response_fields": request["response_fields"],
+        "field_word_limits": request["field_word_limits"],
         "learning_context": request["context"],
     }
     return (
@@ -58,7 +59,7 @@ def make_prompt(request: dict[str, Any]) -> str:
     )
 
 
-def extract_response(output: str) -> dict[str, str]:
+def extract_response(output: str, fields: tuple[str, ...] = FIELDS) -> dict[str, str]:
     decoder = json.JSONDecoder()
     for index, character in enumerate(output):
         if character != "{":
@@ -67,12 +68,70 @@ def extract_response(output: str) -> dict[str, str]:
             value, _ = decoder.raw_decode(output[index:])
         except json.JSONDecodeError:
             continue
-        if isinstance(value, dict) and all(field in value for field in FIELDS):
-            return {field: str(value[field]).strip() for field in FIELDS}
+        if isinstance(value, dict) and all(field in value for field in fields):
+            return {field: str(value[field]).strip() for field in fields}
     tail = output.strip()[-2000:]
     raise ValueError(
         "Local tutor did not return the required structured response. "
         f"Output tail: {tail!r}"
+    )
+
+
+def _partial_json_string(output: str, field: str) -> str:
+    marker = f'"{field}"'
+    marker_index = output.find(marker)
+    if marker_index < 0:
+        return ""
+    colon_index = output.find(":", marker_index + len(marker))
+    if colon_index < 0:
+        return ""
+    quote_index = output.find('"', colon_index + 1)
+    if quote_index < 0:
+        return ""
+
+    decoded: list[str] = []
+    index = quote_index + 1
+    escapes = {
+        '"': '"',
+        "\\": "\\",
+        "/": "/",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+    }
+    while index < len(output):
+        character = output[index]
+        if character == '"':
+            break
+        if character != "\\":
+            decoded.append(character)
+            index += 1
+            continue
+        if index + 1 >= len(output):
+            break
+        escape = output[index + 1]
+        if escape == "u":
+            digits = output[index + 2 : index + 6]
+            if len(digits) < 4:
+                break
+            try:
+                decoded.append(chr(int(digits, 16)))
+            except ValueError:
+                break
+            index += 6
+        elif escape in escapes:
+            decoded.append(escapes[escape])
+            index += 2
+        else:
+            break
+    return "".join(decoded).strip()
+
+
+def partial_response_text(output: str, fields: tuple[str, ...]) -> str:
+    return "\n\n".join(
+        text for field in fields if (text := _partial_json_string(output, field))
     )
 
 
@@ -102,7 +161,7 @@ def start_server(llama_server: str, model: str) -> tuple[subprocess.Popen[bytes]
         "-m",
         model,
         "-c",
-        "2048",
+        "1792",
         "-b",
         "256",
         "-t",
@@ -153,15 +212,26 @@ def wait_until_ready(
     )
 
 
-def run(base_url: str, request: dict[str, Any], timeout: float) -> dict[str, str]:
+def run(
+    base_url: str,
+    request: dict[str, Any],
+    timeout: float,
+    on_partial: Callable[[str], None] | None = None,
+) -> dict[str, str]:
+    fields = tuple(str(field) for field in request["response_fields"])
+    word_limits = request["field_word_limits"]
+    requested_words = sum(int(word_limits[field]) for field in fields)
     payload = {
         "model": "local-qwen",
         "messages": [{"role": "user", "content": make_prompt(request)}],
-        "max_tokens": 160,
+        "max_tokens": min(144, max(64, requested_words * 2 + 32)),
         "temperature": 0.2,
         "seed": 42,
-        "stream": False,
-        "response_format": {"type": "json_schema", "schema": RESPONSE_SCHEMA},
+        "stream": True,
+        "response_format": {
+            "type": "json_schema",
+            "schema": response_schema(fields),
+        },
     }
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     http_request = urllib.request.Request(
@@ -170,16 +240,39 @@ def run(base_url: str, request: dict[str, Any], timeout: float) -> dict[str, str
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    output = ""
+    last_partial = ""
+    truncated = False
     try:
         with _opener().open(http_request, timeout=timeout) as response:
-            result = json.loads(response.read().decode("utf-8"))
+            for raw_line in response:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                event_data = line[5:].strip()
+                if event_data == "[DONE]":
+                    break
+                event = json.loads(event_data)
+                choice = event["choices"][0]
+                if choice.get("finish_reason") == "length":
+                    truncated = True
+                content = choice.get("delta", {}).get("content", "")
+                if not isinstance(content, str) or not content:
+                    continue
+                output += content
+                if on_partial is not None:
+                    partial = partial_response_text(output, fields)
+                    if partial and partial != last_partial:
+                        on_partial(partial)
+                        last_partial = partial
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[-4000:]
         raise RuntimeError(f"llama-server request failed: {detail}") from exc
-    content = result["choices"][0]["message"]["content"]
-    if isinstance(content, dict) and all(field in content for field in FIELDS):
-        return {field: str(content[field]).strip() for field in FIELDS}
-    return extract_response(str(content))
+    if truncated:
+        raise ValueError(
+            "Local tutor response reached its token limit before completion"
+        )
+    return extract_response(output, fields)
 
 
 def _write_message(message: dict[str, Any]) -> None:
@@ -196,7 +289,13 @@ def serve(llama_server: str, model: str, timeout: float) -> int:
                 request = json.loads(line)
                 if request.get("command") == "shutdown":
                     break
-                _write_message({"response": run(base_url, request, timeout)})
+                response = run(
+                    base_url,
+                    request,
+                    timeout,
+                    on_partial=lambda text: _write_message({"partial": text}),
+                )
+                _write_message({"response": response})
             except Exception as exc:
                 _write_message({"error": f"{type(exc).__name__}: {exc}"})
         return 0

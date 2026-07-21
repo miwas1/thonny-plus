@@ -101,11 +101,35 @@ class ClassroomTests(unittest.TestCase):
         source = "\n".join(f"value_{index} = {index}" for index in range(200))
         context = context_from_run("python", source)
         self.assertIn("remaining lines omitted", context.source_excerpt)
-        self.assertLessEqual(len(context.source_excerpt), 3000)
+        self.assertLessEqual(len(context.source_excerpt), 1600)
         self.assertNotIn("value_199", context.source_excerpt)
         request = build_request(context, "quiz")
         self.assertIsNone(request["context"]["diagnostic"])
         self.assertEqual(request["action"], "quiz")
+        self.assertEqual(request["response_fields"], ("question",))
+        self.assertNotIn("actual_output", request["context"])
+
+    def test_requests_include_only_context_needed_for_the_selected_activity(self):
+        context = context_from_run(
+            "python",
+            "print(total)",
+            actual_output="NameError: total is missing",
+            expected_output="3",
+            test_results="FAILED expected 3",
+            session_progress="completed one run",
+        )
+        trace = build_request(context, "trace")["context"]
+        self.assertIn("actual_output", trace)
+        self.assertNotIn("expected_output", trace)
+        self.assertNotIn("test_results", trace)
+
+        difference = build_request(context, "output_difference")["context"]
+        self.assertIn("actual_output", difference)
+        self.assertIn("expected_output", difference)
+
+        encouragement = build_request(context, "encouragement")["context"]
+        self.assertIn("session_progress", encouragement)
+        self.assertNotIn("actual_output", encouragement)
 
     def test_tutor_strategy_is_selected_from_context(self):
         diagnostic = PythonAdapter().parse_diagnostics(
@@ -150,7 +174,12 @@ class ClassroomTests(unittest.TestCase):
         self.assertNotIn("▶ Run", ui_source)
         self.assertNotIn("standard_input", ui_source)
         self.assertNotIn("self.output", ui_source)
-        self.assertEqual(ui_source.count("ttk.Button("), 2)
+        self.assertEqual(ui_source.count("ttk.Button("), 1)
+        self.assertEqual(ui_source.count("self.action_button = tk.Button("), 1)
+        self.assertIn("Explain selected code", ui_source)
+        self.assertIn("Explain selected output", ui_source)
+        self.assertIn("#0F766E", ui_source)
+        self.assertIn("#B45309", ui_source)
 
     def test_native_thonny_run_and_language_servers_are_restored(self):
         root = Path(__file__).parent
@@ -225,6 +254,7 @@ class ClassroomTests(unittest.TestCase):
         view._test_results = ""
         view._diagnostic = None
         view._diagnostic_runs = 0
+        view._selection_origin = None
         view._editor = lambda: MagicMock(get_content=lambda: "print(total)")
         view._highlight_line = MagicMock()
         view.action_button = MagicMock()
@@ -245,8 +275,36 @@ class ClassroomTests(unittest.TestCase):
         view._on_toplevel_response(response)
         self.assertEqual(view._diagnostic.error_type, "undefined_name")
         view._highlight_line.assert_called_once_with(1)
-        view.action_button.configure.assert_called_with(text="Give me one hint")
+        self.assertEqual(
+            view.action_button.configure.call_args.kwargs["text"], "Give me one hint"
+        )
         view.request_tutor.assert_called_once_with("run")
+
+    def test_selected_code_and_shell_output_receive_focused_context(self):
+        view = ClassroomView.__new__(ClassroomView)
+        view._last_source = "value = 2\nprint(value)"
+        view._last_output = "2"
+        view._test_results = ""
+        view._diagnostic = None
+        view._successful_runs = 0
+        view._diagnostic_runs = 0
+        view._editor = lambda: MagicMock(get_content=lambda: "value = 2\nprint(value)")
+
+        editor_widget = MagicMock()
+        editor_widget.index.side_effect = ["2.0", "2.12"]
+        editor_widget.get.return_value = "value = 2\nprint(value)"
+        code_context = view._tutor_context(
+            ("selected_code", editor_widget, "print(value)")
+        )
+        self.assertEqual(code_context.focus, "selected_code")
+        self.assertIn("Selected code:\nprint(value)", code_context.source_excerpt)
+        self.assertLessEqual(len(code_context.source_excerpt), 1400)
+
+        output_context = view._tutor_context(
+            ("selected_output", MagicMock(), "TypeError: wrong value")
+        )
+        self.assertEqual(output_context.focus, "selected_output")
+        self.assertEqual(output_context.actual_output, "TypeError: wrong value")
 
     def test_timeout_stops_process(self):
         with tempfile.TemporaryDirectory() as directory:

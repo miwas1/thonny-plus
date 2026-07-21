@@ -9,10 +9,10 @@ from unittest.mock import MagicMock, patch
 from thonny.plugins import classroom_model
 from thonny.plugins.classroom.adapters import Diagnostic
 from thonny.plugins.classroom.model_worker import (
-    FIELDS,
-    RESPONSE_SCHEMA,
     extract_response,
     make_prompt,
+    partial_response_text,
+    response_schema,
     run,
 )
 from thonny.plugins.classroom.tutor import (
@@ -69,27 +69,68 @@ class ClassroomModelWorkerTests(unittest.TestCase):
 
     @patch("thonny.plugins.classroom.model_worker._opener")
     def test_server_inference_is_bounded_and_schema_constrained(self, opener):
-        expected = {
-            "explanation": "The name is unknown.",
-            "concept": "variables and names",
-            "question": "Where was it created?",
-            "hint": "Compare the spelling.",
-        }
-        result = {"choices": [{"message": {"content": json.dumps(expected)}}]}
-        response = io.BytesIO(json.dumps(result).encode("utf-8"))
+        expected = {"hint": "Compare the spelling."}
+        fragments = ['{"hint":"Compare ', 'the spelling."}']
+        events = "".join(
+            "data: "
+            + json.dumps(
+                {"choices": [{"delta": {"content": fragment}, "finish_reason": None}]}
+            )
+            + "\n\n"
+            for fragment in fragments
+        )
+        events += "data: [DONE]\n\n"
+        response = io.BytesIO(events.encode("utf-8"))
         response.status = 200
         response.__enter__ = lambda value: value
         response.__exit__ = lambda *args: None
         opener.return_value.open.return_value = response
         request = build_request(self.diagnostic, "hint", "beginner", 0)
-        self.assertEqual(run("http://127.0.0.1:9000", request, 30), expected)
+        partials = []
+        self.assertEqual(
+            run("http://127.0.0.1:9000", request, 30, partials.append), expected
+        )
+        self.assertEqual(partials[-1], "Compare the spelling.")
         http_request = opener.return_value.open.call_args.args[0]
         payload = json.loads(http_request.data)
-        self.assertEqual(payload["max_tokens"], 160)
-        self.assertFalse(payload["stream"])
-        self.assertEqual(payload["response_format"]["schema"], RESPONSE_SCHEMA)
-        self.assertEqual(set(RESPONSE_SCHEMA["required"]), set(FIELDS))
-        self.assertFalse(RESPONSE_SCHEMA["additionalProperties"])
+        self.assertEqual(payload["max_tokens"], 72)
+        self.assertTrue(payload["stream"])
+        schema = response_schema(("hint",))
+        self.assertEqual(payload["response_format"]["schema"], schema)
+        self.assertEqual(schema["required"], ["hint"])
+        self.assertFalse(schema["additionalProperties"])
+
+    def test_partial_json_is_rendered_without_exposing_json_syntax(self):
+        output = '{"explanation":"A value is missing.","question":"What value'
+        self.assertEqual(
+            partial_response_text(output, ("explanation", "question")),
+            "A value is missing.\n\nWhat value",
+        )
+
+    @patch("thonny.plugins.classroom.model_worker._opener")
+    def test_truncated_stream_is_rejected_instead_of_showing_half_a_message(
+        self, opener
+    ):
+        event = {
+            "choices": [
+                {
+                    "delta": {"content": '{"hint":"An unfinished'},
+                    "finish_reason": "length",
+                }
+            ]
+        }
+        response = io.BytesIO(
+            ("data: " + json.dumps(event) + "\n\ndata: [DONE]\n\n").encode("utf-8")
+        )
+        response.__enter__ = lambda value: value
+        response.__exit__ = lambda *args: None
+        opener.return_value.open.return_value = response
+        with self.assertRaisesRegex(ValueError, "token limit"):
+            run(
+                "http://127.0.0.1:9000",
+                build_request(self.diagnostic, "hint"),
+                30,
+            )
 
     def test_worker_client_reuses_one_process_for_multiple_requests(self):
         response = {
@@ -112,6 +153,29 @@ class ClassroomModelWorkerTests(unittest.TestCase):
             self.assertEqual(client.start_count, 1)
             self.assertTrue(client.is_running)
             self.assertTrue(client.is_ready)
+        finally:
+            client.close()
+
+    def test_worker_client_forwards_stream_updates_before_complete_response(self):
+        worker = (
+            "import json,sys; print(json.dumps({'status':'ready'}),flush=True); "
+            "\nfor line in sys.stdin:"
+            "\n r=json.loads(line);"
+            "\n if r.get('command')=='shutdown': break"
+            "\n print(json.dumps({'partial':'Compare the'}),flush=True)"
+            "\n print(json.dumps({'response':{'hint':'Compare the spelling.'}}),flush=True)"
+        )
+        client = TutorWorkerClient([sys.executable, "-c", worker])
+        partials = []
+        try:
+            response = client.ask(
+                self.diagnostic,
+                "hint",
+                timeout=10,
+                on_partial=partials.append,
+            )
+            self.assertEqual(partials, ["Compare the"])
+            self.assertEqual(response.hint, "Compare the spelling.")
         finally:
             client.close()
 
@@ -151,6 +215,7 @@ class ClassroomModelWorkerTests(unittest.TestCase):
         self.assertIn("stderr=subprocess.DEVNULL", worker)
         self.assertIn('"--cache-prompt"', worker)
         self.assertIn('"--cache-reuse"', worker)
+        self.assertIn('"1792"', worker)
         self.assertIn('"--no-webui"', worker)
         self.assertIn("_worker_client", integration)
         self.assertIn('bind("WorkbenchReady", _prewarm', integration)

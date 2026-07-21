@@ -43,7 +43,11 @@ def _client() -> TutorWorkerClient | None:
 
 def _show_tutor(self: ClassroomView, action, context=None) -> None:
     context = context or self._tutor_context()
-    if not context.source_excerpt and context.diagnostic is None:
+    if (
+        not context.source_excerpt
+        and not context.actual_output
+        and context.diagnostic is None
+    ):
         self._set_tutor("Open a Python file or write a few lines first.")
         return
     client = _client()
@@ -64,15 +68,28 @@ def _show_tutor(self: ClassroomView, action, context=None) -> None:
         return
     self._tutor_request_id += 1
     request_id = self._tutor_request_id
-    self._set_tutor("Thinking on this computer…")
+    self._set_tutor_partial("Preparing explanation…")
     self._set_tutor_busy(True)
-    self.set_ai_status("Local AI is thinking…")
+    self.set_ai_status("Generating locally…")
+
+    def stream_partial(text: str) -> None:
+        get_workbench().after(
+            0,
+            _deliver_partial,
+            self,
+            request_id,
+            text,
+        )
 
     def ask() -> None:
         used_fallback = False
         try:
             response = client.ask(
-                context, action, previous_hint_count=hint_count, timeout=180.0
+                context,
+                action,
+                previous_hint_count=hint_count,
+                timeout=180.0,
+                on_partial=stream_partial,
             )
         except Exception:
             response = deterministic_response(context, action)
@@ -87,6 +104,11 @@ def _show_tutor(self: ClassroomView, action, context=None) -> None:
             )
 
     threading.Thread(target=ask, daemon=True, name="local-tutor-request").start()
+
+
+def _deliver_partial(view: ClassroomView, request_id: int, text: str) -> None:
+    if request_id == view._tutor_request_id:
+        view._set_tutor_partial(text)
 
 
 def _deliver_response(view: ClassroomView, text: str, used_fallback: bool) -> None:
