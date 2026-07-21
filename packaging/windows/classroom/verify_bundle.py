@@ -20,7 +20,7 @@ REQUIRED = (
     "runtimes/go/bin/go.exe",
     "runtimes/go/bin/gofmt.exe",
     "runtimes/go/src",
-    "tutor/llama-server.exe",
+    "tutor/llama-cli.exe",
     "tutor/qwen-coder-1.5b-q4_k_m.gguf",
     "licenses",
 )

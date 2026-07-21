@@ -1,6 +1,3 @@
 # Kept outside normal Git history; required in the staged portable bundle.
 tutor/llama-cli.exe
 tutor/qwen-coder-1.5b-q4_k_m.gguf
-
-# llama-server.exe may also be shipped for diagnostics/future persistent-worker use.
-tutor/llama-server.exe

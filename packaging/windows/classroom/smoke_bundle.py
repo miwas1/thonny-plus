@@ -40,7 +40,7 @@ def exercise_runtimes(app: Path) -> dict[str, dict[str, object]]:
     results: dict[str, dict[str, object]] = {}
     with tempfile.TemporaryDirectory() as directory:
         working = Path(directory)
-        adapters = bundled_adapters(app.parent / ".classroom-smoke-user", app)
+        adapters = bundled_adapters(working / "user-data", app)
         for language, adapter in adapters.items():
             # A pristine Go build cache may spend over 30 seconds compiling the
             # standard library on slower classroom hardware.

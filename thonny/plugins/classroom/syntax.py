@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from thonny import get_workbench
+from thonny.codeview import get_syntax_options_for_tag
 
 KEYWORDS = {
     "javascript": "break case catch class const else for function if let new return switch throw try var while",
@@ -36,13 +37,13 @@ def _color(text) -> None:
         "classroom_string": r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',
         "classroom_comment": r"//[^\n]*|/\*[\s\S]*?\*/",
     }
-    colors = {
-        "classroom_keyword": "#7f0055",
-        "classroom_string": "#2a00ff",
-        "classroom_comment": "#3f7f5f",
+    theme_tags = {
+        "classroom_keyword": "keyword",
+        "classroom_string": "string",
+        "classroom_comment": "comment",
     }
     for tag, pattern in patterns.items():
         text.tag_remove(tag, "1.0", "end")
-        text.tag_configure(tag, foreground=colors[tag])
+        text.tag_configure(tag, **get_syntax_options_for_tag(theme_tags[tag]))
         for match in re.finditer(pattern, content):
             text.tag_add(tag, f"1.0+{match.start()}c", f"1.0+{match.end()}c")

@@ -79,6 +79,17 @@ def install_thonny(app: Path) -> None:
     thonny_root = app / "thonny"
     site_packages = thonny_root / "Lib" / "site-packages"
     site_packages.mkdir(parents=True, exist_ok=True)
+    # The official Windows embeddable distribution disables site-packages by
+    # default. Enable only this private install; no global PATH or Python state
+    # is changed on the build machine or learner computer.
+    for pth in thonny_root.glob("python*._pth"):
+        lines = [line for line in pth.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if "Lib/site-packages" not in lines:
+            lines.append("Lib/site-packages")
+        lines = ["import site" if line == "#import site" else line for line in lines]
+        if "import site" not in lines:
+            lines.append("import site")
+        pth.write_text("\n".join(lines) + "\n", encoding="utf-8")
     shutil.copytree(REPOSITORY / "thonny", site_packages / "thonny", dirs_exist_ok=True)
     for filename in ("VERSION", "LICENSE.txt", "CREDITS.rst", "README.rst"):
         source = REPOSITORY / filename
@@ -93,14 +104,35 @@ def install_thonny(app: Path) -> None:
 
 
 def install_dependencies(app: Path) -> None:
-    python = app / "thonny" / "python.exe"
+    site_packages = app / "thonny" / "Lib" / "site-packages"
     requirements = REPOSITORY / "packaging" / "requirements-regular-bundle.txt"
     subprocess.run(
-        [str(python), "-m", "pip", "install", "--no-warn-script-location", "-r", str(requirements)],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-warn-script-location",
+            "--target",
+            str(site_packages),
+            "-r",
+            str(requirements),
+        ],
         check=True,
     )
     subprocess.run(
-        [str(python), "-m", "pip", "install", "--no-warn-script-location", "minny==0.0.1a2"],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-warn-script-location",
+            "--target",
+            str(site_packages),
+            "minny==0.0.1a2",
+        ],
         check=True,
     )
 

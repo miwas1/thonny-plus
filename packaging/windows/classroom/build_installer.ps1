@@ -73,11 +73,21 @@ $digest = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerI
 $componentsSource = Join-Path $bundle "COMPONENTS.json"
 Copy-Item -LiteralPath $componentsSource -Destination (Join-Path $output "COMPONENTS.json")
 
+$gitCommit = $env:GITHUB_SHA
+if ([string]::IsNullOrWhiteSpace($gitCommit)) {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        $gitCommit = (& $git.Source -C $PSScriptRoot rev-parse HEAD 2>$null)
+    }
+    if ([string]::IsNullOrWhiteSpace($gitCommit)) { $gitCommit = "unknown" }
+}
+$buildRunId = if ([string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) { "local" } else { $env:GITHUB_RUN_ID }
+
 $metadata = [ordered]@{
     version = $ReleaseVersion
     platform = "windows-x64"
-    git_commit = $env:GITHUB_SHA
-    github_run_id = $env:GITHUB_RUN_ID
+    git_commit = $gitCommit
+    build_run_id = $buildRunId
     installer = $installerName
     installer_sha256 = $digest
     installer_size_bytes = (Get-Item -LiteralPath $installer).Length

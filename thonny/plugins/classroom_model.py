@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import sys
 import threading
-from pathlib import Path
 
 from thonny import get_workbench
 from thonny.plugins.classroom.runtime import application_root
@@ -36,12 +35,20 @@ def _client() -> TutorWorkerClient | None:
     return TutorWorkerClient(command)
 
 
-def _show_tutor(self: ClassroomView, action) -> None:
-    diagnostic = self._diagnostic
-    if diagnostic is None:
+def _show_tutor(self: ClassroomView, action, context=None) -> None:
+    context = context or self._tutor_context()
+    if context is None:
+        return
+    if not context.source_excerpt and context.diagnostic is None:
         self._set_tutor(
-            "Run the program first. If it reports an error, I can explain it "
-            "without writing the solution for you."
+            "Open or run a program first. I use your existing code to guide you "
+            "without writing a solution."
+        )
+        return
+    if action in {"explain", "problem_area"} and context.diagnostic is None:
+        self._set_tutor(
+            "Run the program again so I can connect the explanation to a "
+            "specific error."
         )
         return
     client = _client()
@@ -49,16 +56,24 @@ def _show_tutor(self: ClassroomView, action) -> None:
     if action == "hint":
         self._hint_count += 1
     if client is None:
-        self._set_tutor(render_response(deterministic_response(diagnostic, action), action))
+        self._set_tutor(
+            render_response(deterministic_response(context, action), action)
+        )
         return
+    self._tutor_request_id += 1
+    request_id = self._tutor_request_id
     self._set_tutor("Thinking on this computer…")
+    self._set_tutor_busy(True)
 
     def ask() -> None:
         try:
-            response = client.ask(diagnostic, action, previous_hint_count=hint_count, timeout=150.0)
+            response = client.ask(
+                context, action, previous_hint_count=hint_count, timeout=150.0
+            )
         except Exception:
-            response = deterministic_response(diagnostic, action)
-        get_workbench().after(0, self._set_tutor, render_response(response, action))
+            response = deterministic_response(context, action)
+        if request_id == self._tutor_request_id:
+            get_workbench().after(0, self._set_tutor, render_response(response, action))
 
     threading.Thread(target=ask, daemon=True, name="classroom-tutor-request").start()
 

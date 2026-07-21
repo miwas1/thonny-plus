@@ -31,7 +31,10 @@ class PackagingGateTests(unittest.TestCase):
 
     def test_release_workflow_is_manual_oidc_and_sha_pinned(self):
         workflow = (
-            Path(__file__).parent / ".github" / "workflows" / "release-windows-classroom.yml"
+            Path(__file__).parent
+            / ".github"
+            / "workflows"
+            / "release-windows-classroom.yml"
         ).read_text(encoding="utf-8-sig")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
@@ -48,11 +51,33 @@ class PackagingGateTests(unittest.TestCase):
     def test_model_artifact_is_revision_and_checksum_pinned(self):
         import json
 
-        manifest = json.loads((MODULE_DIR / "artifacts.json").read_text(encoding="utf-8"))
+        manifest = json.loads(
+            (MODULE_DIR / "artifacts.json").read_text(encoding="utf-8")
+        )
         model = manifest["qwen"]
         self.assertRegex(model["revision"], r"^[0-9a-f]{40}$")
         self.assertIn(model["revision"], model["url"])
         self.assertRegex(model["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_stager_enables_private_site_packages_and_never_tracks_model(self):
+        stager = (MODULE_DIR / "stage_bundle.py").read_text(encoding="utf-8")
+        ignore = (Path(__file__).parent / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn('lines.append("Lib/site-packages")', stager)
+        self.assertIn('lines.append("import site")', stager)
+        self.assertIn("*.gguf", ignore)
+        self.assertIn('downloads["qwen"]', stager)
+
+    def test_windows_server_entrypoint_builds_and_smoke_tests_qwen_installer(self):
+        root = Path(__file__).parent
+        script = (root / "build-windows-classroom.ps1").read_text(encoding="utf-8")
+        ignore = (root / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn('"stage_bundle.py"', script)
+        self.assertIn('"smoke_bundle.py"', script)
+        self.assertIn("--with-model", script)
+        self.assertIn('"build_installer.ps1"', script)
+        self.assertIn("/.classroom-build/", ignore)
+        self.assertIn("/.classroom-cache/", ignore)
+        self.assertIn("*.gguf", ignore)
 
 
 if __name__ == "__main__":

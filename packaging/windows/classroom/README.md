@@ -3,6 +3,28 @@
 Target only Windows 10/11 x86-64. Stage the private layout documented in
 `docs/offline-classroom.md`; never install runtimes globally or add them to PATH.
 
+## One-command build on Windows Server
+
+Install Python 3.14 x64 with pip and Inno Setup 6 on a 64-bit Windows Server.
+Git is optional and is used only to record the commit in release metadata. From
+the repository root in PowerShell, run:
+
+```powershell
+.\build-windows-classroom.ps1 -ReleaseVersion "6.0.0-classroom.1"
+```
+
+The script runs the tests, downloads and checksum-verifies the pinned Python,
+Node.js, Go, llama.cpp, and Qwen GGUF artifacts, stages dependencies, performs
+real runtime and model smoke tests, and creates:
+
+```text
+.classroom-build\6.0.0-classroom.1\release\thonny-classroom-6.0.0-classroom.1-windows-x64-setup.exe
+```
+
+Use `-Force` to rebuild the same release version. Cleanup is restricted to that
+version's directory under `.classroom-build`. Both `.classroom-build/` and
+`.classroom-cache/` are ignored by Git, as are all `*.gguf` files.
+
 The release bundle is assembled only on the build machine. `stage_bundle.py`
 downloads the pinned Python, Node.js, Go, llama.cpp, and Qwen artifacts, verifies
 their SHA-256 digests from `artifacts.json`, and writes them under the ignored
