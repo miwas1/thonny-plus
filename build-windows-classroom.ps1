@@ -31,16 +31,27 @@ $classroomTools = Join-Path $repository "packaging\windows\classroom"
 $checksums = Join-Path $buildRoot "checksums.json"
 Set-Location -LiteralPath $repository
 
+$resumeStagedBundle = $false
 if (Test-Path -LiteralPath $buildRoot) {
     if (-not $Force) {
-        throw "Build output already exists: $buildRoot. Use -Force to rebuild this exact version."
+        $hasStagedBundle = (Test-Path -LiteralPath $bundle -PathType Container) -and (Test-Path -LiteralPath $checksums -PathType Leaf)
+        $hasReleaseOutput = Test-Path -LiteralPath $output
+        if ($hasStagedBundle -and -not $hasReleaseOutput) {
+            $resumeStagedBundle = $true
+            Write-Host "Resuming the verified staged bundle in $buildRoot"
+        }
+        else {
+            throw "Build output is incomplete or already contains release output: $buildRoot. Use -Force to rebuild this exact version."
+        }
     }
-    $resolvedBuildsRoot = [System.IO.Path]::GetFullPath($buildsRoot).TrimEnd('\')
-    $resolvedBuildRoot = [System.IO.Path]::GetFullPath($buildRoot)
-    if (-not $resolvedBuildRoot.StartsWith($resolvedBuildsRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to clean a path outside .classroom-build."
+    else {
+        $resolvedBuildsRoot = [System.IO.Path]::GetFullPath($buildsRoot).TrimEnd('\')
+        $resolvedBuildRoot = [System.IO.Path]::GetFullPath($buildRoot)
+        if (-not $resolvedBuildRoot.StartsWith($resolvedBuildsRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean a path outside .classroom-build."
+        }
+        Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force
     }
-    Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force
 }
 
 $pythonCommandInfo = Get-Command $PythonCommand -ErrorAction SilentlyContinue
@@ -81,8 +92,16 @@ if ($LASTEXITCODE -ne 0) { throw "Source tests failed." }
 if ($LASTEXITCODE -ne 0) { throw "Python compile check failed." }
 
 Write-Host "[2/5] Downloading and checksum-verifying runtimes and Qwen"
-& $python (Join-Path $classroomTools "stage_bundle.py") --app $bundle --cache $cache
-if ($LASTEXITCODE -ne 0) { throw "Bundle staging failed." }
+if ($resumeStagedBundle) {
+    Write-Host "Refreshing application source in the existing staged bundle."
+    & $python (Join-Path $classroomTools "stage_bundle.py") --app $bundle --refresh-source
+    if ($LASTEXITCODE -ne 0) { throw "Application source refresh failed." }
+    Write-Host "Downloads and dependency installation are skipped."
+}
+else {
+    & $python (Join-Path $classroomTools "stage_bundle.py") --app $bundle --cache $cache
+    if ($LASTEXITCODE -ne 0) { throw "Bundle staging failed." }
+}
 
 Write-Host "[3/5] Verifying the complete private bundle"
 & $python (Join-Path $classroomTools "verify_release.py") $bundle $checksums

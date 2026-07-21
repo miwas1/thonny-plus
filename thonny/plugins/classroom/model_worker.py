@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from typing import Any
@@ -47,7 +48,10 @@ def extract_response(output: str) -> dict[str, str]:
     raise ValueError("Local tutor did not return the required structured response")
 
 
-def run(llama_cli: str, model: str, request: dict[str, Any], timeout: float) -> dict[str, str]:
+def run(
+    llama_cli: str, model: str, request: dict[str, Any], timeout: float
+) -> dict[str, str]:
+    threads = max(1, min(os.cpu_count() or 1, 12))
     command = [
         llama_cli,
         "-m",
@@ -55,12 +59,22 @@ def run(llama_cli: str, model: str, request: dict[str, Any], timeout: float) -> 
         "-p",
         make_prompt(request),
         "-n",
-        "300",
+        "160",
+        "-c",
+        "2048",
+        "-b",
+        "256",
+        "-t",
+        str(threads),
+        "-s",
+        "42",
         "--temp",
         "0.2",
         "--no-display-prompt",
     ]
-    completed = subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=True)
+    completed = subprocess.run(
+        command, text=True, capture_output=True, timeout=timeout, check=True
+    )
     return extract_response(completed.stdout)
 
 

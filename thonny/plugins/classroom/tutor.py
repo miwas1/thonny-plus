@@ -211,7 +211,6 @@ def deterministic_response(
 ) -> TutorResponse:
     if isinstance(context, Diagnostic):
         context = TutorContext(context.language, context.relevant_code, context)
-    diagnostic = context.diagnostic
     concept, where, error_type = _focus(context)
     language = context.language.title()
     error_explanations = {
@@ -372,14 +371,22 @@ class TutorWorkerClient:
         timeout: float = 30.0,
     ) -> TutorResponse:
         payload = build_request(context, action, lesson_level, previous_hint_count)
-        completed = subprocess.run(
-            self.command,
-            input=json.dumps(payload) + "\n",
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=True,
-        )
+        try:
+            completed = subprocess.run(
+                self.command,
+                input=json.dumps(payload) + "\n",
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=True,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError(
+                f"Local tutor worker exceeded its {timeout:g}-second limit"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or "no worker output").strip()[-2000:]
+            raise RuntimeError(f"Local tutor worker failed: {detail}") from exc
         data = json.loads(completed.stdout.splitlines()[-1])
         response = TutorResponse(
             **{key: str(data[key]).strip() for key in TutorResponse.__annotations__}

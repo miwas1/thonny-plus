@@ -146,6 +146,7 @@ def install_dependencies(app: Path) -> None:
             "install",
             "--disable-pip-version-check",
             "--no-warn-script-location",
+            "--upgrade",
             "--target",
             str(site_packages),
             "-r",
@@ -161,6 +162,7 @@ def install_dependencies(app: Path) -> None:
             "install",
             "--disable-pip-version-check",
             "--no-warn-script-location",
+            "--upgrade",
             "--target",
             str(site_packages),
             "minny==0.0.1a2",
@@ -240,11 +242,23 @@ def main() -> int:
     parser.add_argument("--cache", type=Path, default=REPOSITORY / ".classroom-cache")
     parser.add_argument("--skip-dependencies", action="store_true")
     parser.add_argument(
+        "--refresh-source",
+        action="store_true",
+        help="Refresh only Thonny source and launch files in an existing staged bundle",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Reuse an existing partial bundle after a failed run",
     )
     args = parser.parse_args()
+    if args.refresh_source:
+        app = args.app.resolve()
+        if not app.is_dir():
+            parser.error(f"Cannot refresh missing staged bundle: {app}")
+        install_thonny(app)
+        print(f"Refreshed application source: {app}")
+        return 0
     stage(
         args.app.resolve(),
         args.cache.resolve(),

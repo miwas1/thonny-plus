@@ -75,6 +75,9 @@ class PackagingGateTests(unittest.TestCase):
         self.assertIn('"smoke_bundle.py"', script)
         self.assertIn("--with-model", script)
         self.assertIn('"build_installer.ps1"', script)
+        self.assertIn("resumeStagedBundle", script)
+        self.assertIn("Resuming the verified staged bundle", script)
+        self.assertIn("--refresh-source", script)
         self.assertIn("version[1] -ne 13", script)
         self.assertNotIn("version[1] -ne 14", script)
         self.assertIn("/.classroom-build/", ignore)
@@ -89,6 +92,7 @@ class PackagingGateTests(unittest.TestCase):
         stager = (MODULE_DIR / "stage_bundle.py").read_text(encoding="utf-8")
         self.assertIn('embedded_python = app / "thonny" / "python.exe"', stager)
         self.assertIn("str(embedded_python)", stager)
+        self.assertIn("if args.refresh_source:", stager)
 
 
 if __name__ == "__main__":

@@ -21,9 +21,13 @@ real runtime and model smoke tests, and creates:
 .classroom-build\6.0.0-classroom.1\release\thonny-classroom-6.0.0-classroom.1-windows-x64-setup.exe
 ```
 
-Use `-Force` to rebuild the same release version. Cleanup is restricted to that
-version's directory under `.classroom-build`. Both `.classroom-build/` and
-`.classroom-cache/` are ignored by Git, as are all `*.gguf` files.
+If staging completed but a smoke test was interrupted, rerun the same command;
+it resumes the verified staged bundle without downloading or reinstalling it.
+Use `-Force` when you intentionally want to rebuild the same release version
+from scratch. Cleanup is restricted to that version's directory under
+`.classroom-build`. Both `.classroom-build/` and `.classroom-cache/` are ignored
+by Git, as are all `*.gguf` files. The first Qwen load may take several minutes
+on a CPU-only server and prints a progress message before inference begins.
 
 The release bundle is assembled only on the build machine. `stage_bundle.py`
 downloads the pinned Python, Node.js, Go, llama.cpp, and Qwen artifacts, verifies

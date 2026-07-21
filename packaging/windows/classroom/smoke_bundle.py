@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -74,14 +75,25 @@ def exercise_runtimes(app: Path) -> dict[str, dict[str, object]]:
 
 
 def exercise_model(app: Path) -> dict[str, object]:
+    llama_cli = app / "tutor" / "llama-cli.exe"
+    print("Checking bundled llama.cpp executable…", flush=True)
+    version = subprocess.run(
+        [str(llama_cli), "--version"],
+        text=True,
+        capture_output=True,
+        timeout=30.0,
+        check=True,
+    )
     command = [
         str(app / "thonny" / "python.exe"),
         "-m",
         "thonny.plugins.classroom.model_worker",
         "--llama-cli",
-        str(app / "tutor" / "llama-cli.exe"),
+        str(llama_cli),
         "--model",
         str(app / "tutor" / "qwen-coder-1.5b-q4_k_m.gguf"),
+        "--timeout",
+        "540",
     ]
     diagnostic = Diagnostic(
         language="python",
@@ -92,9 +104,17 @@ def exercise_model(app: Path) -> dict[str, object]:
         raw_message="NameError: name 'total' is not defined",
         relevant_code="1: print(total)",
     )
-    response = TutorWorkerClient(command).ask(diagnostic, "hint", timeout=240.0)
+    print(
+        "Loading Qwen and running the first offline inference. This may take several minutes on a CPU-only server…",
+        flush=True,
+    )
+    response = TutorWorkerClient(command).ask(diagnostic, "hint", timeout=600.0)
+    version_text = (version.stdout or version.stderr).strip()
     return {
         "status": "passed",
+        "llama_cpp": version_text.splitlines()[0]
+        if version_text
+        else "version unavailable",
         "word_count": len(" ".join(response.__dict__.values()).split()),
         "fields": list(response.__dict__),
     }
