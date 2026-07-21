@@ -3182,9 +3182,13 @@ class Workbench(tk.Tk):
 
     def _check_version_alignment(self):
         # A smoke test and a guard against forgetting to update one of the 2 places during release
-        from importlib.metadata import version
+        from importlib.metadata import PackageNotFoundError, version
 
-        installation_version = version("thonny")
+        try:
+            installation_version = version("thonny")
+        except PackageNotFoundError:
+            logger.info("Skipping package version alignment check in a source checkout")
+            return
         embedded_version = thonny.get_version()
         if installation_version != embedded_version:
             messagebox.showwarning(

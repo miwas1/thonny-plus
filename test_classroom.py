@@ -2,12 +2,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from thonny.plugins.classroom.adapters import (
-    GoAdapter,
-    JavaScriptAdapter,
-    PythonAdapter,
-)
+from thonny.plugins import basedpyright
+from thonny.plugins.classroom.adapters import PythonAdapter
 from thonny.plugins.classroom.runtime import (
     SAMPLES,
     bundled_adapters,
@@ -23,14 +21,15 @@ from thonny.plugins.classroom.tutor import (
     render_response,
     select_tutor_action,
 )
+from thonny.plugins.classroom.ui import ClassroomView
 
 
 class ClassroomTests(unittest.TestCase):
     def test_language_selection_and_samples(self):
         self.assertEqual(language_for_path("hello.py"), "python")
-        self.assertEqual(language_for_path("hello.js"), "javascript")
-        self.assertEqual(language_for_path("hello.go"), "go")
-        self.assertIn("Hello!", SAMPLES["go"])
+        self.assertEqual(language_for_path("hello.js"), "python")
+        self.assertEqual(set(SAMPLES), {"python"})
+        self.assertIn("Hello!", SAMPLES["python"])
 
     def test_bundled_python_reuses_complete_thonny_distribution(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -52,24 +51,6 @@ class ClassroomTests(unittest.TestCase):
         self.assertEqual(len(diagnostic.relevant_code.splitlines()), 9)
         self.assertNotIn("line_1 =", diagnostic.relevant_code)
 
-    def test_javascript_and_go_diagnostics(self):
-        js = JavaScriptAdapter("node").parse_diagnostics(
-            "/work/a.js:3\nReferenceError: total is not defined", "a\nb\ntotal"
-        )
-        assert js
-        self.assertEqual((js.error_type, js.line), ("undefined_name", 3))
-        go = GoAdapter("go", "/go", "/tmp/cache").parse_diagnostics(
-            "./main.go:7:2: undefined: total", "\n" * 6 + "total"
-        )
-        assert go
-        self.assertEqual((go.execution_phase, go.column), ("compile", 2))
-
-    def test_go_environment_disables_network_modules(self):
-        env = GoAdapter(
-            "/app/go/bin/go", "/app/go", tempfile.mkdtemp()
-        ).build_environment(Path("main.go"))
-        self.assertEqual((env["GOPROXY"], env["GO111MODULE"]), ("off", "off"))
-
     def test_tutor_payload_is_restricted_and_short(self):
         diagnostic = PythonAdapter().parse_diagnostics(
             "File \"x.py\", line 1\nNameError: name 'x' is not defined", "print(x)"
@@ -83,8 +64,8 @@ class ClassroomTests(unittest.TestCase):
 
     def test_every_mvp_tutor_activity_has_a_bounded_fallback(self):
         context = context_from_run(
-            language="javascript",
-            source="let total = 0;\nfor (let i = 0; i < 3; i++) total += i;\nconsole.log(total);",
+            language="python",
+            source="total = 0\nfor value in range(3):\n    total += value\nprint(total)",
             actual_output="3",
             expected_output="6",
             test_results="FAILED test_total: expected 6, received 3",
@@ -118,6 +99,7 @@ class ClassroomTests(unittest.TestCase):
         source = "\n".join(f"value_{index} = {index}" for index in range(200))
         context = context_from_run("python", source)
         self.assertIn("remaining lines omitted", context.source_excerpt)
+        self.assertLessEqual(len(context.source_excerpt), 3000)
         self.assertNotIn("value_199", context.source_excerpt)
         request = build_request(context, "quiz")
         self.assertIsNone(request["context"]["diagnostic"])
@@ -160,8 +142,73 @@ class ClassroomTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("More learning activities", ui_source)
         self.assertNotIn("tutor_activity", ui_source)
-        self.assertIn("Help me understand", ui_source)
-        self.assertIn("One hint", ui_source)
+        self.assertIn("Python assistant", ui_source)
+        self.assertIn("Give me one hint", ui_source)
+        self.assertNotIn("Language:", ui_source)
+        self.assertNotIn("▶ Run", ui_source)
+        self.assertNotIn("standard_input", ui_source)
+        self.assertNotIn("self.output", ui_source)
+        self.assertEqual(ui_source.count("ttk.Button("), 2)
+
+    def test_native_thonny_run_and_language_servers_are_restored(self):
+        root = Path(__file__).parent
+        running = (root / "thonny" / "running.py").read_text(encoding="utf-8")
+        basedpyright = (root / "thonny" / "plugins" / "basedpyright.py").read_text(
+            encoding="utf-8"
+        )
+        ruff = (root / "thonny" / "plugins" / "ruff.py").read_text(encoding="utf-8")
+        ui = (root / "thonny" / "plugins" / "classroom" / "ui.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn('get_view("ClassroomView", create=False)', running)
+        self.assertNotIn("CLASSROOM_EDITION", basedpyright)
+        self.assertNotIn("CLASSROOM_EDITION", ruff)
+        self.assertIn('bind("ProgramOutput"', ui)
+        self.assertIn('bind("ToplevelResponse"', ui)
+        self.assertFalse(
+            (root / "thonny" / "plugins" / "classroom_visibility.py").exists()
+        )
+
+    def test_missing_optional_language_server_does_not_block_python_startup(self):
+        with (
+            patch.object(basedpyright.shutil, "which", return_value=None),
+            patch.object(basedpyright.importlib.util, "find_spec", return_value=None),
+            patch.object(basedpyright, "get_workbench") as workbench,
+        ):
+            basedpyright.load_plugin()
+
+        workbench.assert_not_called()
+
+    def test_native_toplevel_exception_triggers_contextual_ai(self):
+        view = ClassroomView.__new__(ClassroomView)
+        view._run_in_progress = True
+        view._last_source = "print(total)"
+        view._last_output = ""
+        view._test_results = ""
+        view._diagnostic = None
+        view._diagnostic_runs = 0
+        view._editor = lambda: MagicMock(get_content=lambda: "print(total)")
+        view._highlight_line = MagicMock()
+        view.action_button = MagicMock()
+        view.status = MagicMock()
+        view.request_tutor = MagicMock()
+        response = {
+            "command_name": "Run",
+            "user_exception": {
+                "type_name": "NameError",
+                "message": "name 'total' is not defined",
+                "items": (
+                    ("Traceback (most recent call last):\n", None),
+                    ('  File "<string>", line 1, in <module>\n', None),
+                    ("NameError: name 'total' is not defined\n", None),
+                ),
+            },
+        }
+        view._on_toplevel_response(response)
+        self.assertEqual(view._diagnostic.error_type, "undefined_name")
+        view._highlight_line.assert_called_once_with(1)
+        view.action_button.configure.assert_called_with(text="Give me one hint")
+        view.request_tutor.assert_called_once_with("run")
 
     def test_timeout_stops_process(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,7 +1,7 @@
+import importlib.util
 import os.path
 import shutil
 import subprocess
-import sys
 import typing
 from logging import getLogger
 from typing import Dict
@@ -16,7 +16,6 @@ logger = getLogger(__name__)
 
 
 class BasedpyrightProxy(LanguageServerProxy):
-
     def get_settings(self) -> Dict:
         proxy = get_runner().get_backend_proxy()
         if proxy is None:
@@ -35,12 +34,6 @@ class BasedpyrightProxy(LanguageServerProxy):
 
         project_path = get_workbench().get_local_project_path()
         logger.info("Detected project path: %s", project_path)
-        if project_path is not None:
-            base_path = project_path
-        else:
-            base_path = get_workbench().get_local_cwd()
-
-        typings_path = os.path.join(base_path, "typings")
 
         if (
             proxy.interpreter_is_cpython_compatible()
@@ -54,7 +47,10 @@ class BasedpyrightProxy(LanguageServerProxy):
             if venv_interpreters:
                 result["python"]["pythonPath"] = venv_interpreters[0]
 
-        if not proxy.interpreter_is_cpython_compatible() or not proxy.has_local_interpreter():
+        if (
+            not proxy.interpreter_is_cpython_compatible()
+            or not proxy.has_local_interpreter()
+        ):
             # MicroPython stdlib and frozen modules have only stubs, so the modules won't have source
             result["basedpyright"]["analysis"]["diagnosticSeverityOverrides"][
                 "reportMissingModuleSource"
@@ -87,12 +83,24 @@ class BasedpyrightProxy(LanguageServerProxy):
     def _create_server_process(self) -> subprocess.Popen[bytes]:
         server_path = shutil.which("basedpyright-langserver")
         if server_path is None:
-            raise UserError("Can't find basedpyright-langserver")
+            try:
+                import basedpyright.langserver  # noqa: F401
+            except ImportError as exc:
+                raise UserError("Can't find basedpyright-langserver") from exc
+            return create_frontend_python_process(
+                ["-m", "basedpyright.langserver", "--stdio"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=False,
+            )
 
         logger.info("basedpyright-langserver path: %r", server_path)
 
         if os.name == "nt":
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+            creationflags = (
+                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+            )
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
@@ -125,4 +133,14 @@ class BasedpyrightProxy(LanguageServerProxy):
 
 
 def load_plugin():
+    if (
+        shutil.which("basedpyright-langserver") is None
+        and importlib.util.find_spec("basedpyright") is None
+    ):
+        logger.warning(
+            "Basedpyright is not installed; Python execution will remain available without "
+            "language-server assistance"
+        )
+        return
+
     get_workbench().add_language_server_proxy_class(BasedpyrightProxy)

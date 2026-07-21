@@ -164,65 +164,6 @@ class PythonAdapter(LanguageAdapter):
         )
 
 
-class JavaScriptAdapter(LanguageAdapter):
-    language = "javascript"
-    extensions = (".js",)
-
-    def build_command(self, path: Path) -> Sequence[str]:
-        return (str(self.executable), str(path))
-
-    def parse_diagnostics(self, output: str, source: str) -> Diagnostic | None:
-        location = re.search(r"(?:file://)?[^\s:]+\.js:(\d+)(?::(\d+))?", output)
-        error = re.search(r"((?:Syntax|Reference|Type|Range)Error):\s*([^\n]+)", output)
-        if not error:
-            return None
-        line = int(location.group(1)) if location else None
-        column = int(location.group(2)) if location and location.group(2) else None
-        phase = "syntax" if error.group(1) == "SyntaxError" else "runtime"
-        message = f"{error.group(1)}: {error.group(2)}"
-        return self._diagnostic(
-            phase, normalize_error_type(error.group(1), message), line, column, message, source
-        )
-
-
-class GoAdapter(LanguageAdapter):
-    language = "go"
-    extensions = (".go",)
-
-    def __init__(
-        self,
-        executable: str | Path,
-        goroot: str | Path,
-        cache_dir: str | Path,
-        timeout: float = 10.0,
-    ) -> None:
-        super().__init__(executable, timeout)
-        self.goroot = Path(goroot)
-        self.cache_dir = Path(cache_dir)
-
-    def build_command(self, path: Path) -> Sequence[str]:
-        return (str(self.executable), "run", str(path))
-
-    def build_environment(self, path: Path) -> Mapping[str, str]:
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        return {
-            "GOROOT": str(self.goroot),
-            "GOCACHE": str(self.cache_dir),
-            "GO111MODULE": "off",
-            "GOPROXY": "off",
-            "GOSUMDB": "off",
-        }
-
-    def parse_diagnostics(self, output: str, source: str) -> Diagnostic | None:
-        match = re.search(r"(?:^|\n)(?:[^\n:]+\.go):(\d+):(\d+):\s*(.+)", output)
-        if not match:
-            return None
-        line, column, message = int(match.group(1)), int(match.group(2)), match.group(3)
-        return self._diagnostic(
-            "compile", normalize_error_type("compile error", message), line, column, message, source
-        )
-
-
 def normalize_error_type(error: str, message: str) -> str:
     lower = message.lower()
     if "undefined" in lower or "not defined" in lower or "is not defined" in lower:

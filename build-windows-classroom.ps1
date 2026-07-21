@@ -91,12 +91,12 @@ if ($LASTEXITCODE -ne 0) { throw "Source tests failed." }
 & $python -m compileall -q thonny/plugins
 if ($LASTEXITCODE -ne 0) { throw "Python compile check failed." }
 
-Write-Host "[2/5] Downloading and checksum-verifying runtimes and Qwen"
+Write-Host "[2/5] Downloading and checksum-verifying Python and local AI"
 if ($resumeStagedBundle) {
     Write-Host "Refreshing application source in the existing staged bundle."
     & $python (Join-Path $classroomTools "stage_bundle.py") --app $bundle --refresh-source
     if ($LASTEXITCODE -ne 0) { throw "Application source refresh failed." }
-    Write-Host "Downloads and dependency installation are skipped."
+    Write-Host "Runtime and model downloads are skipped; Python dependencies are refreshed."
 }
 else {
     & $python (Join-Path $classroomTools "stage_bundle.py") --app $bundle --cache $cache
@@ -107,7 +107,7 @@ Write-Host "[3/5] Verifying the complete private bundle"
 & $python (Join-Path $classroomTools "verify_release.py") $bundle $checksums
 if ($LASTEXITCODE -ne 0) { throw "Bundle verification failed." }
 
-Write-Host "[4/5] Running bundled Python, Node.js, Go, and real Qwen smoke tests"
+Write-Host "[4/5] Running bundled Python and persistent Qwen smoke tests"
 & $python (Join-Path $classroomTools "smoke_bundle.py") $bundle --with-model
 if ($LASTEXITCODE -ne 0) { throw "Runtime or Qwen smoke test failed." }
 

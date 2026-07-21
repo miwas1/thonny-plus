@@ -24,9 +24,7 @@ $definition = Join-Path $PSScriptRoot "classroom_installer.iss"
 $required = @(
     "thonny\thonny.exe",
     "thonny\python.exe",
-    "runtimes\node\node.exe",
-    "runtimes\go\bin\go.exe",
-    "tutor\llama-cli.exe",
+    "tutor\llama-server.exe",
     "tutor\qwen-coder-1.5b-q4_k_m.gguf"
 )
 foreach ($relative in $required) {

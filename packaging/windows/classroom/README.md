@@ -14,8 +14,8 @@ the repository root in PowerShell, run:
 ```
 
 The script runs the tests, downloads and checksum-verifies the pinned Python,
-Node.js, Go, llama.cpp, and Qwen GGUF artifacts, stages dependencies, performs
-real runtime and model smoke tests, and creates:
+llama.cpp, and Qwen GGUF artifacts, stages dependencies, performs real Python
+and persistent-model smoke tests, and creates:
 
 ```text
 .classroom-build\6.0.0-classroom.1\release\thonny-classroom-6.0.0-classroom.1-windows-x64-setup.exe
@@ -26,11 +26,11 @@ it resumes the verified staged bundle without downloading or reinstalling it.
 Use `-Force` when you intentionally want to rebuild the same release version
 from scratch. Cleanup is restricted to that version's directory under
 `.classroom-build`. Both `.classroom-build/` and `.classroom-cache/` are ignored
-by Git, as are all `*.gguf` files. The first Qwen load may take several minutes
-on a CPU-only server and prints a progress message before inference begins.
+by Git, as are all `*.gguf` files. The smoke test loads Qwen once, sends two
+requests through the same hidden worker, and records cold and warm timings.
 
 The release bundle is assembled only on the build machine. `stage_bundle.py`
-downloads the pinned Python, Node.js, Go, llama.cpp, and Qwen artifacts, verifies
+downloads the pinned Python, llama.cpp, and Qwen artifacts, verifies
 their SHA-256 digests from `artifacts.json`, and writes them under the ignored
 `app/` directory. The GGUF model and downloaded runtime archives must never be
 committed.
@@ -44,8 +44,8 @@ python packaging/windows/classroom/verify_release.py app checksums.json
 `verify_bundle.py` checks only the basic directory layout and file hashes; it is
 not sufficient for a release. Only create an installer after
 `verify_release.py` and `smoke_bundle.py app --with-model` succeed. Keep
-downloaded archives outside Git. Include the exact Node.js, Go, llama.cpp, Qwen,
-and Thonny notices in `app/licenses/`.
+downloaded archives outside Git. Include the exact llama.cpp, Qwen, and Thonny
+notices in `app/licenses/`.
 
 ## Manual GitHub Actions release to S3
 

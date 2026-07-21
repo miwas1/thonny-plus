@@ -183,7 +183,7 @@ class Runner:
         get_workbench().set_default("run.run_in_terminal_keep_open", True)
 
         try:
-            import thonny.plugins.debugger  # @UnusedImport
+            import thonny.plugins.debugger  # noqa: F401
 
             debugger_available = True
         except ImportError:
@@ -1957,7 +1957,7 @@ class InlineCommandDialog(WorkDialog):
             # it was a lazy definition
             try:
                 self._cmd = self._cmd()
-            except Exception as e:
+            except Exception:
                 logger.error("Could not produce command for backend", self._cmd)
                 self.set_action_text("Error!")
                 self.append_text("Could not produce command for backend\n")

@@ -21,9 +21,7 @@ REPOSITORY = HERE.parents[2]
 MANIFEST = HERE / "artifacts.json"
 CHECKSUM_TARGETS = (
     "thonny/python.exe",
-    "runtimes/node/node.exe",
-    "runtimes/go/bin/go.exe",
-    "tutor/llama-cli.exe",
+    "tutor/llama-server.exe",
     "tutor/qwen-coder-1.5b-q4_k_m.gguf",
 )
 
@@ -75,6 +73,50 @@ def copy_contents(source: Path, destination: Path) -> None:
             shutil.copy2(item, target)
 
 
+def install_thonny_metadata(site_packages: Path) -> Path:
+    version = (REPOSITORY / "thonny" / "VERSION").read_text(encoding="ascii").strip()
+    for previous in site_packages.glob("thonny-*.dist-info"):
+        shutil.rmtree(previous)
+    dist_info = site_packages / f"thonny-{version}.dist-info"
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text(
+        "Metadata-Version: 2.4\n"
+        "Name: thonny\n"
+        f"Version: {version}\n"
+        "Summary: Python IDE for beginners\n",
+        encoding="utf-8",
+    )
+    (dist_info / "WHEEL").write_text(
+        "Wheel-Version: 1.0\n"
+        "Generator: thonny-classroom-stage\n"
+        "Root-Is-Purelib: true\n"
+        "Tag: py3-none-any\n",
+        encoding="utf-8",
+    )
+    (dist_info / "top_level.txt").write_text("thonny\n", encoding="utf-8")
+    (dist_info / "INSTALLER").write_text(
+        "thonny-classroom-stage\n", encoding="utf-8"
+    )
+    (dist_info / "RECORD").write_text("", encoding="utf-8")
+    return dist_info
+
+
+def prune_removed_components(app: Path) -> None:
+    for obsolete in (
+        app / "runtimes" / "node",
+        app / "runtimes" / "go",
+    ):
+        if obsolete.exists():
+            shutil.rmtree(obsolete)
+    for obsolete in (
+        app / "licenses" / "NODE-LICENSE.txt",
+        app / "licenses" / "GO-LICENSE.txt",
+        app / "licenses" / "GO-PATENTS.txt",
+        app / "tutor" / "llama-cli.exe",
+    ):
+        obsolete.unlink(missing_ok=True)
+
+
 def install_thonny(app: Path) -> None:
     thonny_root = app / "thonny"
     site_packages = thonny_root / "Lib" / "site-packages"
@@ -94,7 +136,11 @@ def install_thonny(app: Path) -> None:
         if "import site" not in lines:
             lines.append("import site")
         pth.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    shutil.copytree(REPOSITORY / "thonny", site_packages / "thonny", dirs_exist_ok=True)
+    installed_package = site_packages / "thonny"
+    if installed_package.exists():
+        shutil.rmtree(installed_package)
+    shutil.copytree(REPOSITORY / "thonny", installed_package)
+    install_thonny_metadata(site_packages)
     for filename in ("VERSION", "LICENSE.txt", "CREDITS.rst", "README.rst"):
         source = REPOSITORY / filename
         if source.is_file():
@@ -113,6 +159,7 @@ def install_thonny(app: Path) -> None:
         REPOSITORY / "packaging" / "windows" / "thonny_python.ini", thonny_root
     )
     shutil.copy2(REPOSITORY / "packaging" / "portable_thonny.ini", thonny_root)
+    prune_removed_components(app)
 
 
 def install_dependencies(app: Path) -> None:
@@ -178,11 +225,6 @@ def write_licenses(
     licenses.mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPOSITORY / "THIRD_PARTY_NOTICES.md", licenses)
     shutil.copy2(REPOSITORY / "LICENSE.txt", licenses / "THONNY-LICENSE.txt")
-    node_root = next((extracted / "node").iterdir())
-    shutil.copy2(node_root / "LICENSE", licenses / "NODE-LICENSE.txt")
-    go_root = extracted / "go" / "go"
-    shutil.copy2(go_root / "LICENSE", licenses / "GO-LICENSE.txt")
-    shutil.copy2(go_root / "PATENTS", licenses / "GO-PATENTS.txt")
     pinned_licenses = {
         "LLAMA-CPP-LICENSE.txt": (
             "https://raw.githubusercontent.com/ggml-org/llama.cpp/"
@@ -213,13 +255,10 @@ def stage(app: Path, cache: Path, install_deps: bool, resume: bool = False) -> N
     extracted = cache / "extracted"
     if extracted.exists():
         shutil.rmtree(extracted)
-    for name in ("python", "node", "go", "llama_cpp"):
+    for name in ("python", "llama_cpp"):
         safe_extract(downloads[name], extracted / name)
 
     copy_contents(extracted / "python", app / "thonny")
-    node_root = next((extracted / "node").iterdir())
-    copy_contents(node_root, app / "runtimes" / "node")
-    copy_contents(extracted / "go" / "go", app / "runtimes" / "go")
     copy_contents(extracted / "llama_cpp", app / "tutor")
     shutil.copy2(downloads["qwen"], app / "tutor" / "qwen-coder-1.5b-q4_k_m.gguf")
     install_thonny(app)
@@ -227,6 +266,10 @@ def stage(app: Path, cache: Path, install_deps: bool, resume: bool = False) -> N
         install_dependencies(app)
     write_licenses(app, extracted, manifest)
 
+    write_bundle_metadata(app, manifest)
+
+
+def write_bundle_metadata(app: Path, manifest: dict[str, dict[str, str]]) -> None:
     checksums = {relative: sha256(app / relative) for relative in CHECKSUM_TARGETS}
     (app.parent / "checksums.json").write_text(
         json.dumps(checksums, indent=2) + "\n", encoding="utf-8"
@@ -257,6 +300,10 @@ def main() -> int:
         if not app.is_dir():
             parser.error(f"Cannot refresh missing staged bundle: {app}")
         install_thonny(app)
+        if not args.skip_dependencies:
+            install_dependencies(app)
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        write_bundle_metadata(app, manifest)
         print(f"Refreshed application source: {app}")
         return 0
     stage(

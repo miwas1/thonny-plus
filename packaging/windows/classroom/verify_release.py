@@ -9,13 +9,13 @@ from pathlib import Path
 from verify_bundle import verify
 
 EXTRA_REQUIRED = (
-    "tutor/llama-cli.exe",
+    "tutor/llama-server.exe",
     "licenses/THIRD_PARTY_NOTICES.md",
     "licenses/THONNY-LICENSE.txt",
-    "licenses/NODE-LICENSE.txt",
-    "licenses/GO-LICENSE.txt",
     "licenses/LLAMA-CPP-LICENSE.txt",
     "licenses/QWEN-LICENSE.txt",
+    "thonny/Lib/site-packages/basedpyright/langserver.py",
+    "thonny/Lib/site-packages/ruff/__main__.py",
 )
 
 
@@ -24,11 +24,16 @@ def verify_release(root: Path, checksums: dict[str, str]) -> list[str]:
     errors.extend(
         f"Missing {relative}" for relative in EXTRA_REQUIRED if not (root / relative).is_file()
     )
+    metadata_files = list(
+        (root / "thonny" / "Lib" / "site-packages").glob(
+            "thonny-*.dist-info/METADATA"
+        )
+    )
+    if len(metadata_files) != 1:
+        errors.append("Missing or ambiguous Thonny package metadata")
     required_checksums = (
         "thonny/python.exe",
-        "runtimes/node/node.exe",
-        "runtimes/go/bin/go.exe",
-        "tutor/llama-cli.exe",
+        "tutor/llama-server.exe",
         "tutor/qwen-coder-1.5b-q4_k_m.gguf",
     )
     errors.extend(

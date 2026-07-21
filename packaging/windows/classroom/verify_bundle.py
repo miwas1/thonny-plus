@@ -16,11 +16,7 @@ REQUIRED = (
     "thonny/python.exe",
     "thonny/python314.dll",
     "thonny/Lib",
-    "runtimes/node/node.exe",
-    "runtimes/go/bin/go.exe",
-    "runtimes/go/bin/gofmt.exe",
-    "runtimes/go/src",
-    "tutor/llama-cli.exe",
+    "tutor/llama-server.exe",
     "tutor/qwen-coder-1.5b-q4_k_m.gguf",
     "licenses",
 )

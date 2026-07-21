@@ -1,4 +1,4 @@
-"""Exercise every private runtime and, optionally, real offline Qwen inference."""
+"""Exercise bundled Python and the persistent offline Qwen service."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -16,69 +17,63 @@ from thonny.plugins.classroom.adapters import Diagnostic
 from thonny.plugins.classroom.runtime import bundled_adapters
 from thonny.plugins.classroom.tutor import TutorWorkerClient
 
-HELLO = {
-    "python": 'print("Hello!")\n',
-    "javascript": 'console.log("Hello!");\n',
-    "go": 'package main\nimport "fmt"\nfunc main() { fmt.Println("Hello!") }\n',
-}
-INPUT = {
-    "python": "print(input())\n",
-    "javascript": "process.stdin.once('data', data => console.log(data.toString().trim()));\n",
-    "go": (
-        'package main\nimport "fmt"\nfunc main() { var value string; fmt.Scanln(&value); '
-        "fmt.Println(value) }\n"
-    ),
-}
-LOOPS = {
-    "python": "while True:\n    pass\n",
-    "javascript": "while (true) {}\n",
-    "go": "package main\nfunc main() { for {} }\n",
-}
-SUFFIXES = {"python": ".py", "javascript": ".js", "go": ".go"}
 
-
-def exercise_runtimes(app: Path) -> dict[str, dict[str, object]]:
-    results: dict[str, dict[str, object]] = {}
+def exercise_python(app: Path) -> dict[str, object]:
     with tempfile.TemporaryDirectory() as directory:
         working = Path(directory)
-        adapters = bundled_adapters(working / "user-data", app)
-        for language, adapter in adapters.items():
-            # A pristine Go build cache may spend over 30 seconds compiling the
-            # standard library on slower classroom hardware.
-            adapter.timeout = 120.0
-            suffix = SUFFIXES[language]
-            hello = working / f"hello{suffix}"
-            hello.write_text(HELLO[language], encoding="utf-8")
-            hello_result = adapter.run_file(hello)
-            if hello_result.returncode != 0 or hello_result.stdout.strip() != "Hello!":
-                raise RuntimeError(f"{language} Hello failed: {hello_result}")
+        adapter = bundled_adapters(working / "user-data", app)["python"]
+        hello = working / "hello.py"
+        hello.write_text('print("Hello!")\n', encoding="utf-8")
+        hello_result = adapter.run_file(hello)
+        if hello_result.returncode != 0 or hello_result.stdout.strip() != "Hello!":
+            raise RuntimeError(f"Python Hello failed: {hello_result}")
 
-            input_program = working / f"input{suffix}"
-            input_program.write_text(INPUT[language], encoding="utf-8")
-            input_result = adapter.run_file(input_program, input_text="student\n")
-            if input_result.returncode != 0 or input_result.stdout.strip() != "student":
-                raise RuntimeError(f"{language} input failed: {input_result}")
+        input_program = working / "input.py"
+        input_program.write_text("print(input())\n", encoding="utf-8")
+        input_result = adapter.run_file(input_program, input_text="student\n")
+        if input_result.returncode != 0 or input_result.stdout.strip() != "student":
+            raise RuntimeError(f"Python input failed: {input_result}")
 
-            adapter.timeout = 3.0
-            loop = working / f"loop{suffix}"
-            loop.write_text(LOOPS[language], encoding="utf-8")
-            timeout_result = adapter.run_file(loop)
-            if not timeout_result.timed_out:
-                raise RuntimeError(f"{language} timeout did not stop the program")
-            results[language] = {
-                "executable": str(adapter.executable),
-                "hello": "passed",
-                "input": "passed",
-                "timeout": "passed",
-            }
-    return results
+        adapter.timeout = 3.0
+        loop = working / "loop.py"
+        loop.write_text("while True:\n    pass\n", encoding="utf-8")
+        timeout_result = adapter.run_file(loop)
+        if not timeout_result.timed_out:
+            raise RuntimeError("Python timeout did not stop the program")
+        return {
+            "executable": str(adapter.executable),
+            "hello": "passed",
+            "input": "passed",
+            "timeout": "passed",
+        }
+
+
+def exercise_language_services(app: Path) -> dict[str, str]:
+    python = app / "thonny" / "python.exe"
+    basedpyright = subprocess.run(
+        [str(python), "-c", "import basedpyright.langserver"],
+        text=True,
+        capture_output=True,
+        timeout=30.0,
+    )
+    if basedpyright.returncode != 0:
+        raise RuntimeError(f"Basedpyright import failed: {basedpyright.stderr}")
+    ruff = subprocess.run(
+        [str(python), "-m", "ruff", "--version"],
+        text=True,
+        capture_output=True,
+        timeout=30.0,
+    )
+    if ruff.returncode != 0:
+        raise RuntimeError(f"Ruff startup failed: {ruff.stderr}")
+    return {"basedpyright": "passed", "ruff": ruff.stdout.strip()}
 
 
 def exercise_model(app: Path) -> dict[str, object]:
-    llama_cli = app / "tutor" / "llama-cli.exe"
-    print("Checking bundled llama.cpp executable…", flush=True)
+    llama_server = app / "tutor" / "llama-server.exe"
+    print("Checking bundled llama.cpp server…", flush=True)
     version = subprocess.run(
-        [str(llama_cli), "--version"],
+        [str(llama_server), "--version"],
         text=True,
         capture_output=True,
         timeout=30.0,
@@ -88,8 +83,8 @@ def exercise_model(app: Path) -> dict[str, object]:
         str(app / "thonny" / "python.exe"),
         "-m",
         "thonny.plugins.classroom.model_worker",
-        "--llama-cli",
-        str(llama_cli),
+        "--llama-server",
+        str(llama_server),
         "--model",
         str(app / "tutor" / "qwen-coder-1.5b-q4_k_m.gguf"),
         "--timeout",
@@ -104,19 +99,28 @@ def exercise_model(app: Path) -> dict[str, object]:
         raw_message="NameError: name 'total' is not defined",
         relevant_code="1: print(total)",
     )
-    print(
-        "Loading Qwen and running the first offline inference. This may take several minutes on a CPU-only server…",
-        flush=True,
-    )
-    response = TutorWorkerClient(command).ask(diagnostic, "hint", timeout=600.0)
+    client = TutorWorkerClient(command)
+    print("Loading Qwen once and running two in-process requests…", flush=True)
+    try:
+        first_started = time.monotonic()
+        first = client.ask(diagnostic, "explain", timeout=600.0)
+        first_seconds = time.monotonic() - first_started
+        warm_started = time.monotonic()
+        second = client.ask(diagnostic, "hint", timeout=180.0)
+        warm_seconds = time.monotonic() - warm_started
+        if client.start_count != 1:
+            raise RuntimeError("Qwen worker restarted between requests")
+    finally:
+        client.close()
     version_text = (version.stdout or version.stderr).strip()
     return {
         "status": "passed",
-        "llama_cpp": version_text.splitlines()[0]
-        if version_text
-        else "version unavailable",
-        "word_count": len(" ".join(response.__dict__.values()).split()),
-        "fields": list(response.__dict__),
+        "llama_cpp": version_text.splitlines()[0] if version_text else "version unavailable",
+        "worker_starts": 1,
+        "cold_seconds": round(first_seconds, 2),
+        "warm_seconds": round(warm_seconds, 2),
+        "first_word_count": len(" ".join(first.__dict__.values()).split()),
+        "second_word_count": len(" ".join(second.__dict__.values()).split()),
     }
 
 
@@ -126,7 +130,10 @@ def main() -> int:
     parser.add_argument("--with-model", action="store_true")
     args = parser.parse_args()
     app = args.bundle.resolve()
-    report: dict[str, object] = {"runtimes": exercise_runtimes(app)}
+    report: dict[str, object] = {
+        "python": exercise_python(app),
+        "language_services": exercise_language_services(app),
+    }
     if args.with_model:
         report["model"] = exercise_model(app)
     print(json.dumps(report, indent=2))

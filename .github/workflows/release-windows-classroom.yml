@@ -70,7 +70,7 @@ jobs:
           python -m unittest -v test_classroom.py test_classroom_model.py test_classroom_packaging.py
           python -m compileall -q thonny/plugins
 
-      - name: Download pinned runtimes and model, then stage bundle
+      - name: Download pinned Python and model, then stage bundle
         shell: pwsh
         run: python packaging/windows/classroom/stage_bundle.py
 

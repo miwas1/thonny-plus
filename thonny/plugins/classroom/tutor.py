@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import queue
 import subprocess
+import threading
+import atexit
+from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -128,13 +133,14 @@ def bounded_text(value: str, limit: int = 6000) -> str:
 
 def source_excerpt(source: str, diagnostic: Diagnostic | None = None) -> str:
     if diagnostic and diagnostic.relevant_code:
-        return bounded_text(diagnostic.relevant_code)
+        return bounded_text(diagnostic.relevant_code, 2000)
     lines = source.splitlines()
-    excerpt = lines[:80]
-    if len(lines) > 80:
+    excerpt = lines[:40]
+    if len(lines) > 40:
         excerpt.append("[remaining lines omitted]")
     return bounded_text(
-        "\n".join(f"{number:>4} | {line}" for number, line in enumerate(excerpt, 1))
+        "\n".join(f"{number:>4} | {line}" for number, line in enumerate(excerpt, 1)),
+        3000,
     )
 
 
@@ -153,9 +159,9 @@ def context_from_run(
         language=language,
         source_excerpt=source_excerpt(source, diagnostic),
         diagnostic=diagnostic,
-        actual_output=bounded_text(actual_output, 3000),
-        expected_output=bounded_text(expected_output, 1500),
-        test_results=bounded_text(test_results, 3000),
+        actual_output=bounded_text(actual_output, 1500),
+        expected_output=bounded_text(expected_output, 800),
+        test_results=bounded_text(test_results, 1500),
         learner_note=bounded_text(learner_note, 500),
         session_progress=bounded_text(session_progress, 500),
         timed_out=timed_out,
@@ -376,10 +382,104 @@ def build_request(
 
 
 class TutorWorkerClient:
-    """Line-delimited JSON client for an isolated local llama.cpp worker."""
+    """Client for one hidden worker which keeps the local model loaded."""
 
     def __init__(self, command: list[str]) -> None:
         self.command = command
+        self._process: subprocess.Popen[str] | None = None
+        self._messages: queue.Queue[dict[str, object]] = queue.Queue()
+        self._stderr: deque[str] = deque(maxlen=30)
+        self._start_lock = threading.Lock()
+        self._request_lock = threading.Lock()
+        self._ready = False
+        self.start_count = 0
+        atexit.register(self.close)
+
+    @property
+    def is_running(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
+    @property
+    def is_ready(self) -> bool:
+        return self._ready and self.is_running
+
+    def start(self, timeout: float = 600.0) -> None:
+        with self._start_lock:
+            if self.is_ready:
+                return
+            self._close_unlocked()
+            self._messages = queue.Queue()
+            self._stderr.clear()
+            kwargs: dict[str, object] = {}
+            if os.name == "nt":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                kwargs = {
+                    "creationflags": subprocess.CREATE_NO_WINDOW,
+                    "startupinfo": startupinfo,
+                }
+            self._process = subprocess.Popen(
+                self.command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                **kwargs,
+            )
+            self.start_count += 1
+            threading.Thread(
+                target=self._read_stdout,
+                daemon=True,
+                name="local-tutor-worker-output",
+            ).start()
+            threading.Thread(
+                target=self._read_stderr,
+                daemon=True,
+                name="local-tutor-worker-errors",
+            ).start()
+            try:
+                message = self._messages.get(timeout=timeout)
+            except queue.Empty as exc:
+                self._close_unlocked()
+                raise TimeoutError(
+                    f"Local tutor model did not load within {timeout:g} seconds"
+                ) from exc
+            if message.get("status") != "ready":
+                detail = str(
+                    message.get("error", "worker exited before becoming ready")
+                )
+                self._close_unlocked()
+                raise RuntimeError(f"Local tutor worker failed to start: {detail}")
+            self._ready = True
+
+    def _read_stdout(self) -> None:
+        process = self._process
+        if process is None or process.stdout is None:
+            return
+        for line in process.stdout:
+            try:
+                message = json.loads(line)
+                if isinstance(message, dict):
+                    self._messages.put(message)
+            except json.JSONDecodeError:
+                self._messages.put({"error": f"Invalid worker response: {line[-500:]}"})
+        self._messages.put(
+            {
+                "error": "Local tutor worker stopped unexpectedly. "
+                + "".join(self._stderr)[-1500:]
+            }
+        )
+
+    def _read_stderr(self) -> None:
+        process = self._process
+        if process is None or process.stderr is None:
+            return
+        for line in process.stderr:
+            self._stderr.append(line)
 
     def ask(
         self,
@@ -390,29 +490,72 @@ class TutorWorkerClient:
         timeout: float = 30.0,
     ) -> TutorResponse:
         payload = build_request(context, action, lesson_level, previous_hint_count)
-        try:
-            completed = subprocess.run(
-                self.command,
-                input=json.dumps(payload) + "\n",
-                text=True,
-                capture_output=True,
-                timeout=timeout,
-                check=True,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise TimeoutError(
-                f"Local tutor worker exceeded its {timeout:g}-second limit"
-            ) from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or "no worker output").strip()[-2000:]
-            raise RuntimeError(f"Local tutor worker failed: {detail}") from exc
-        data = json.loads(completed.stdout.splitlines()[-1])
+        with self._request_lock:
+            self.start(timeout)
+            process = self._process
+            if process is None or process.stdin is None:
+                raise RuntimeError("Local tutor worker is unavailable")
+            try:
+                process.stdin.write(json.dumps(payload) + "\n")
+                process.stdin.flush()
+                message = self._messages.get(timeout=timeout)
+            except queue.Empty as exc:
+                self.close()
+                raise TimeoutError(
+                    f"Local tutor worker exceeded its {timeout:g}-second limit"
+                ) from exc
+            if "error" in message:
+                raise RuntimeError(f"Local tutor worker failed: {message['error']}")
+            data = message.get("response")
+            if not isinstance(data, dict):
+                raise ValueError("Local tutor worker returned no response")
         response = TutorResponse(**enforce_response_word_limits(data))
         if not all(asdict(response).values()):
             raise ValueError("Tutor response contained an empty field")
         if len(" ".join(asdict(response).values()).split()) > 100:
             raise ValueError("Tutor response exceeded the 100-word classroom limit")
         return response
+
+    def close(self) -> None:
+        if not self._start_lock.acquire(timeout=0.2):
+            process = self._process
+            self._process = None
+            self._ready = False
+            self._stop_process(process, graceful=False)
+            return
+        try:
+            self._close_unlocked()
+        finally:
+            self._start_lock.release()
+
+    def _close_unlocked(self) -> None:
+        process = self._process
+        self._process = None
+        self._ready = False
+        self._stop_process(process, graceful=True)
+
+    @staticmethod
+    def _stop_process(process: subprocess.Popen[str] | None, *, graceful: bool) -> None:
+        if process is None:
+            return
+        if process.poll() is None:
+            try:
+                if graceful and process.stdin is not None:
+                    process.stdin.write('{"command":"shutdown"}\n')
+                    process.stdin.flush()
+                    process.wait(timeout=5.0)
+                else:
+                    process.terminate()
+                    process.wait(timeout=2.0)
+            except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+                process.terminate()
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None and not stream.closed:
+                stream.close()
 
 
 def render_response(response: TutorResponse, action: TutorAction) -> str:
