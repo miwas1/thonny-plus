@@ -3,6 +3,7 @@ import importlib.metadata
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 MODULE_DIR = Path(__file__).parent / "packaging" / "windows" / "classroom"
 
@@ -73,7 +74,26 @@ class PackagingGateTests(unittest.TestCase):
         self.assertIn("QWEN-LICENSE.txt", joined)
         self.assertIn("basedpyright/langserver.py", joined)
         self.assertIn("ruff/__main__.py", joined)
+        self.assertIn("thonny/Scripts/ruff.exe", joined)
         self.assertIn("package metadata", joined)
+
+    def test_embedded_dependency_install_preserves_windows_console_scripts(self):
+        stage_bundle = load("stage_bundle")
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(stage_bundle.subprocess, "run") as run,
+        ):
+            app = Path(directory)
+            stage_bundle.install_dependencies(app)
+
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertIn("--target", commands[0])
+        for command in commands[1:]:
+            self.assertIn("--prefix", command)
+            self.assertEqual(
+                command[command.index("--prefix") + 1], str(app / "thonny")
+            )
+            self.assertIn("--force-reinstall", command)
 
     def test_release_workflow_is_manual_oidc_and_sha_pinned(self):
         workflow = (
@@ -142,7 +162,7 @@ class PackagingGateTests(unittest.TestCase):
         self.assertIn('python-version: "3.13"', workflow)
 
         stager = (MODULE_DIR / "stage_bundle.py").read_text(encoding="utf-8")
-        self.assertIn('embedded_python = app / "thonny" / "python.exe"', stager)
+        self.assertIn('embedded_python = thonny_root / "python.exe"', stager)
         self.assertIn("str(embedded_python)", stager)
         self.assertIn("if args.refresh_source:", stager)
         self.assertIn("if not args.skip_dependencies:", stager)

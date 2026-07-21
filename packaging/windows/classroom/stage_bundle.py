@@ -94,9 +94,7 @@ def install_thonny_metadata(site_packages: Path) -> Path:
         encoding="utf-8",
     )
     (dist_info / "top_level.txt").write_text("thonny\n", encoding="utf-8")
-    (dist_info / "INSTALLER").write_text(
-        "thonny-classroom-stage\n", encoding="utf-8"
-    )
+    (dist_info / "INSTALLER").write_text("thonny-classroom-stage\n", encoding="utf-8")
     (dist_info / "RECORD").write_text("", encoding="utf-8")
     return dist_info
 
@@ -163,8 +161,9 @@ def install_thonny(app: Path) -> None:
 
 
 def install_dependencies(app: Path) -> None:
-    site_packages = app / "thonny" / "Lib" / "site-packages"
-    embedded_python = app / "thonny" / "python.exe"
+    thonny_root = app / "thonny"
+    site_packages = thonny_root / "Lib" / "site-packages"
+    embedded_python = thonny_root / "python.exe"
     requirements = REPOSITORY / "packaging" / "requirements-regular-bundle.txt"
     # The build entry point intentionally requires Python 3.13, while the
     # learner runtime is the separately pinned embeddable Python distribution.
@@ -194,8 +193,9 @@ def install_dependencies(app: Path) -> None:
             "--disable-pip-version-check",
             "--no-warn-script-location",
             "--upgrade",
-            "--target",
-            str(site_packages),
+            "--force-reinstall",
+            "--prefix",
+            str(thonny_root),
             "-r",
             str(requirements),
         ],
@@ -210,8 +210,9 @@ def install_dependencies(app: Path) -> None:
             "--disable-pip-version-check",
             "--no-warn-script-location",
             "--upgrade",
-            "--target",
-            str(site_packages),
+            "--force-reinstall",
+            "--prefix",
+            str(thonny_root),
             "minny==0.0.1a2",
         ],
         check=True,

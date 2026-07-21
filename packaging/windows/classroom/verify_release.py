@@ -16,18 +16,19 @@ EXTRA_REQUIRED = (
     "licenses/QWEN-LICENSE.txt",
     "thonny/Lib/site-packages/basedpyright/langserver.py",
     "thonny/Lib/site-packages/ruff/__main__.py",
+    "thonny/Scripts/ruff.exe",
 )
 
 
 def verify_release(root: Path, checksums: dict[str, str]) -> list[str]:
     errors = verify(root, checksums)
     errors.extend(
-        f"Missing {relative}" for relative in EXTRA_REQUIRED if not (root / relative).is_file()
+        f"Missing {relative}"
+        for relative in EXTRA_REQUIRED
+        if not (root / relative).is_file()
     )
     metadata_files = list(
-        (root / "thonny" / "Lib" / "site-packages").glob(
-            "thonny-*.dist-info/METADATA"
-        )
+        (root / "thonny" / "Lib" / "site-packages").glob("thonny-*.dist-info/METADATA")
     )
     if len(metadata_files) != 1:
         errors.append("Missing or ambiguous Thonny package metadata")
