@@ -175,7 +175,9 @@ class PackagingGateTests(unittest.TestCase):
         self.assertIn("llama-server.exe", smoke)
         self.assertIn("def exercise_language_services", smoke)
         self.assertIn("from basedpyright.langserver import main; main()", smoke)
-        self.assertIn("b'\"capabilities\"'", smoke)
+        self.assertIn('"method": "initialized"', smoke)
+        self.assertIn("_wait_for_lsp_response(process, 1, 30.0)", smoke)
+        self.assertIn("stderr={detail!r}", smoke)
 
 
 if __name__ == "__main__":
