@@ -36,8 +36,11 @@ def _color(text) -> None:
         "classroom_string": r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',
         "classroom_comment": r"//[^\n]*|/\*[\s\S]*?\*/",
     }
-    colors = {"classroom_keyword": "#7f0055", "classroom_string": "#2a00ff",
-              "classroom_comment": "#3f7f5f"}
+    colors = {
+        "classroom_keyword": "#7f0055",
+        "classroom_string": "#2a00ff",
+        "classroom_comment": "#3f7f5f",
+    }
     for tag, pattern in patterns.items():
         text.tag_remove(tag, "1.0", "end")
         text.tag_configure(tag, foreground=colors[tag])

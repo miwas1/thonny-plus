@@ -13,7 +13,9 @@ from pathlib import Path
 
 REQUIRED = (
     "thonny/thonny.exe",
-    "runtimes/python/python.exe",
+    "thonny/python.exe",
+    "thonny/python314.dll",
+    "thonny/Lib",
     "runtimes/node/node.exe",
     "runtimes/go/bin/go.exe",
     "runtimes/go/bin/gofmt.exe",
@@ -48,8 +50,9 @@ def verify(root: Path, checksums: dict[str, str]) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("bundle", type=Path)
-    parser.add_argument("checksums", type=Path,
-                        help="JSON object mapping bundle-relative paths to SHA-256 digests")
+    parser.add_argument(
+        "checksums", type=Path, help="JSON object mapping bundle-relative paths to SHA-256 digests"
+    )
     args = parser.parse_args()
     errors = verify(args.bundle.resolve(), json.loads(args.checksums.read_text(encoding="utf-8")))
     if errors:

@@ -18,6 +18,7 @@ class ClassroomView(ttk.Frame):
         super().__init__(master)
         self.adapters = bundled_adapters(get_thonny_user_dir())
         self.language = tk.StringVar(value="python")
+        self.standard_input = tk.StringVar(value="")
         self.status = tk.StringVar(value="Ready")
         self._active: LanguageAdapter | None = None
         self._diagnostic: Diagnostic | None = None
@@ -25,25 +26,43 @@ class ClassroomView(ttk.Frame):
         toolbar = ttk.Frame(self)
         toolbar.grid(row=0, column=0, sticky="ew", padx=8, pady=6)
         ttk.Label(toolbar, text="Language:").pack(side="left")
-        selector = ttk.Combobox(toolbar, textvariable=self.language, state="readonly", width=14,
-                                values=("python", "javascript", "go"))
+        selector = ttk.Combobox(
+            toolbar,
+            textvariable=self.language,
+            state="readonly",
+            width=14,
+            values=("python", "javascript", "go"),
+        )
         selector.pack(side="left", padx=(5, 12))
         selector.bind("<<ComboboxSelected>>", self._language_changed)
         ttk.Button(toolbar, text="▶ Run", command=self.run).pack(side="left", padx=3)
         ttk.Button(toolbar, text="■ Stop", command=self.stop).pack(side="left", padx=3)
-        ttk.Button(toolbar, text="Explain", command=lambda: self.show_tutor("explain")).pack(side="left", padx=3)
+        ttk.Button(toolbar, text="Explain", command=lambda: self.show_tutor("explain")).pack(
+            side="left", padx=3
+        )
         ttk.Label(toolbar, textvariable=self.status).pack(side="left", padx=12)
-        ttk.Button(toolbar, text="● Offline and private", command=self._show_privacy).pack(side="right")
+        ttk.Button(toolbar, text="● Offline and private", command=self._show_privacy).pack(
+            side="right"
+        )
+        ttk.Entry(toolbar, textvariable=self.standard_input, width=18).pack(
+            side="right", padx=(4, 10)
+        )
+        ttk.Label(toolbar, text="Input:").pack(side="right")
         self.output = tk.Text(self, height=8, wrap="word", state="disabled")
         self.output.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 6))
         self.tutor = ttk.LabelFrame(self, text="Tutor")
         self.tutor_text = tk.Text(self.tutor, height=7, wrap="word", state="disabled")
         self.tutor_text.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=7, pady=7)
-        actions = (("Explain this", "explain"), ("Give me one hint", "hint"),
-                   ("Teach the concept", "concept"), ("Try again", "question"))
+        actions = (
+            ("Explain this", "explain"),
+            ("Give me one hint", "hint"),
+            ("Teach the concept", "concept"),
+            ("Try again", "question"),
+        )
         for column, (label, action) in enumerate(actions):
-            ttk.Button(self.tutor, text=label, command=lambda value=action: self.show_tutor(value)).grid(
-                row=1, column=column, padx=4, pady=(0, 7))
+            ttk.Button(
+                self.tutor, text=label, command=lambda value=action: self.show_tutor(value)
+            ).grid(row=1, column=column, padx=4, pady=(0, 7))
         self.rowconfigure(1, weight=1)
         self.columnconfigure(0, weight=1)
         get_workbench().bind("NotebookTabChanged", self._sync_language, True)
@@ -70,8 +89,11 @@ class ClassroomView(ttk.Frame):
         self.language.set(language)
         adapter = self.adapters[language]
         if not adapter.detect_runtime():
-            messagebox.showerror("Runtime unavailable", f"The bundled {language} runtime is missing.\n"
-                                 "Runtime settings are intentionally hidden in classroom mode.")
+            messagebox.showerror(
+                "Runtime unavailable",
+                f"The bundled {language} runtime is missing.\n"
+                "Runtime settings are intentionally hidden in classroom mode.",
+            )
             return
         source = editor.get_content()
         path = editor.get_target_path()
@@ -90,11 +112,19 @@ class ClassroomView(ttk.Frame):
         self.tutor.grid_remove()
         self._set_output("")
         self.status.set("Running…")
-        threading.Thread(target=self._run_worker, args=(adapter, Path(path), source), daemon=True).start()
+        entered = self.standard_input.get()
+        input_text = entered + ("\n" if entered and not entered.endswith("\n") else "")
+        threading.Thread(
+            target=self._run_worker,
+            args=(adapter, Path(path), source, input_text),
+            daemon=True,
+        ).start()
 
-    def _run_worker(self, adapter: LanguageAdapter, path: Path, source: str) -> None:
+    def _run_worker(
+        self, adapter: LanguageAdapter, path: Path, source: str, input_text: str
+    ) -> None:
         try:
-            result = adapter.run_file(path)
+            result = adapter.run_file(path, input_text=input_text)
             diagnostic = adapter.parse_diagnostics(result.stderr, source)
             get_workbench().after(0, self._finish_run, result, diagnostic)
         except Exception as exc:
@@ -120,7 +150,9 @@ class ClassroomView(ttk.Frame):
 
     def show_tutor(self, action: TutorAction) -> None:
         if not self._diagnostic:
-            self._set_tutor("Run the program first. If it reports an error, I can explain it without writing the solution for you.")
+            self._set_tutor(
+                "Run the program first. If it reports an error, I can explain it without writing the solution for you."
+            )
             return
         response = deterministic_response(self._diagnostic, action)
         if action == "hint":
@@ -151,11 +183,15 @@ class ClassroomView(ttk.Frame):
         text.see(f"{line}.0")
 
     def _show_privacy(self) -> None:
-        messagebox.showinfo("Offline and private", "Your code and questions stay on this computer.\n"
-                            "No account or internet connection is required.\n\n"
-                            "This classroom edition supports standard libraries only. External package installation is not enabled in offline mode.")
+        messagebox.showinfo(
+            "Offline and private",
+            "Your code and questions stay on this computer.\n"
+            "No account or internet connection is required.\n\n"
+            "This classroom edition supports standard libraries only. External package installation is not enabled in offline mode.",
+        )
 
 
 def load_classroom_ui() -> None:
-    get_workbench().add_view(ClassroomView, "Classroom", "s", visible_by_default=True,
-                             default_position_key="000")
+    get_workbench().add_view(
+        ClassroomView, "Classroom", "s", visible_by_default=True, default_position_key="000"
+    )

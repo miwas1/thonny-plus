@@ -21,16 +21,21 @@ EXTRA_REQUIRED = (
 
 def verify_release(root: Path, checksums: dict[str, str]) -> list[str]:
     errors = verify(root, checksums)
-    errors.extend(f"Missing {relative}" for relative in EXTRA_REQUIRED if not (root / relative).is_file())
+    errors.extend(
+        f"Missing {relative}" for relative in EXTRA_REQUIRED if not (root / relative).is_file()
+    )
     required_checksums = (
-        "runtimes/python/python.exe",
+        "thonny/python.exe",
         "runtimes/node/node.exe",
         "runtimes/go/bin/go.exe",
         "tutor/llama-cli.exe",
         "tutor/qwen-coder-1.5b-q4_k_m.gguf",
     )
-    errors.extend(f"No pinned checksum for {relative}" for relative in required_checksums
-                  if relative not in checksums)
+    errors.extend(
+        f"No pinned checksum for {relative}"
+        for relative in required_checksums
+        if relative not in checksums
+    )
     return errors
 
 

@@ -1,0 +1,125 @@
+name: Release Windows Classroom installer to S3
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Immutable release version (for example, 6.0.0-classroom.1)"
+        required: true
+        type: string
+      allow_overwrite:
+        description: "Replace files if this version already exists in S3"
+        required: false
+        default: false
+        type: boolean
+
+run-name: Release Windows Classroom ${{ inputs.release_version }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-classroom-release-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    name: Build, verify, and publish
+    runs-on: windows-2025
+    timeout-minutes: 120
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      S3_BUCKET: ${{ vars.S3_BUCKET }}
+      S3_PREFIX: ${{ vars.S3_PREFIX }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+    steps:
+      - name: Check out the requested commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up build Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14.6"
+
+      - name: Validate release configuration
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') {
+            throw "Invalid release_version"
+          }
+          foreach ($name in @("AWS_REGION", "S3_BUCKET", "AWS_ROLE_TO_ASSUME")) {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "env:$name").Value)) {
+              throw "Missing GitHub release environment variable: $name"
+            }
+          }
+          if ($env:S3_PREFIX -match '^s3://' -or $env:S3_PREFIX -match '\.\.') {
+            throw "S3_PREFIX must be a key prefix, not a URI or relative path"
+          }
+
+      - name: Run source tests
+        shell: pwsh
+        run: |
+          python -m unittest -v test_classroom.py test_classroom_model.py test_classroom_packaging.py
+          python -m compileall -q thonny/plugins
+
+      - name: Download pinned runtimes and model, then stage bundle
+        shell: pwsh
+        run: python packaging/windows/classroom/stage_bundle.py
+
+      - name: Verify staged release
+        shell: pwsh
+        run: |
+          python packaging/windows/classroom/verify_release.py app checksums.json
+          python packaging/windows/classroom/smoke_bundle.py app --with-model
+
+      - name: Build installer and release metadata
+        shell: pwsh
+        run: ./packaging/windows/classroom/build_installer.ps1 -ReleaseVersion $env:RELEASE_VERSION -BundlePath ./app -OutputPath ./release
+
+      - name: Upload short-lived GitHub artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: thonny-classroom-${{ inputs.release_version }}-windows-x64
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: thonny-${{ github.run_id }}
+
+      - name: Publish release to S3
+        shell: pwsh
+        env:
+          ALLOW_OVERWRITE: ${{ inputs.allow_overwrite }}
+        run: |
+          $prefix = $env:S3_PREFIX.Trim("/")
+          $releaseKey = if ($prefix) { "$prefix/$env:RELEASE_VERSION" } else { $env:RELEASE_VERSION }
+          $installerName = "thonny-classroom-$env:RELEASE_VERSION-windows-x64-setup.exe"
+          $installerKey = "$releaseKey/$installerName"
+
+          if ($env:ALLOW_OVERWRITE -ne "true") {
+            aws s3api head-object --bucket $env:S3_BUCKET --key $installerKey 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              throw "s3://$env:S3_BUCKET/$releaseKey already exists; use allow_overwrite only for an intentional replacement"
+            }
+          }
+
+          aws s3 cp release/ "s3://$env:S3_BUCKET/$releaseKey/" --recursive --only-show-errors --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "S3 upload failed" }
+
+          aws s3api head-object --bucket $env:S3_BUCKET --key $installerKey | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Uploaded installer could not be verified in S3" }
+          "Published s3://$env:S3_BUCKET/$releaseKey/" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

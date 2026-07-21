@@ -62,3 +62,9 @@ node
 node.exe
 .python-version
 /dist/
+/app/
+/.classroom-cache/
+/.classroom-smoke-user/
+/checksums.json
+*.gguf
+/release/

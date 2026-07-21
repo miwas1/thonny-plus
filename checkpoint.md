@@ -2,12 +2,13 @@
 
 ## Current status
 
-The source-level MVP has been implemented in this repository. The remaining work
-is Windows x86-64 bundle assembly and end-to-end validation with the real bundled
-runtimes and Qwen model.
+The source-level MVP and source cleanup have been completed in this repository.
+The remaining work is Windows x86-64 bundle assembly and end-to-end validation
+with the real bundled runtimes and Qwen model.
 
-The repository currently contains uncommitted new files. Preserve the complete
-working tree when transferring it to Windows; do not copy only committed files.
+The source cleanup and formatting changes described below are currently
+uncommitted. Preserve the complete working tree when transferring or committing
+the work.
 
 ## What has been implemented
 
@@ -128,7 +129,7 @@ instead of the complete editor contents.
 
 ## Verification completed
 
-Ten automated tests passed on Linux:
+Eleven automated tests pass on Windows:
 
 ```text
 python -m unittest -v \
@@ -146,60 +147,45 @@ Coverage includes:
 - Offline Go environment variables.
 - Tutor request restrictions and response length.
 - Infinite-loop timeout and termination.
+- Standard-input delivery to a running program.
 - Structured llama.cpp response extraction.
 - Rejection of incomplete model output.
 - Detection of incomplete Windows bundles and missing notices.
 
-All added Python files also passed `py_compile`, and `git diff --check` reported
-no whitespace errors.
+All classroom Python files pass `compileall` and the Black formatter check, and
+`git diff --check` reports no whitespace errors.
 
-GUI behavior has been source-reviewed but not launched in this Linux container
-because a headless display server was unavailable. Node.js and Go adapter smoke
-tests were also unavailable because those host runtimes were not installed.
+GUI behavior has been source-reviewed but not launched with the bundled app.
+Node.js and Go adapter smoke tests remain unavailable because the private bundle
+has not been staged.
 
 ## Work remaining on Windows
 
 Target only Windows 10/11 x86-64 for this MVP.
 
-### 1. Preserve and inspect the working tree
+### Completed Windows source work
 
-On the source machine, transfer the whole repository including untracked files.
-On Windows, run:
+- Consolidated standard-input UI and worker handoff directly into
+  `thonny/plugins/classroom/ui.py`.
+- Removed the redundant `classroom_input.py`, `classroom_io.py`, and
+  `classroom_keyboard.py` loader plugins, eliminating import-order-dependent
+  monkey patches.
+- Captured Tk input state on the UI thread before starting the process worker.
+- Added an automated standard-input delivery test.
+- Applied Black and passed the source verification commands on Windows.
 
-```powershell
-git status --short
-```
-
-Confirm that the classroom plugin, tests, documentation, and packaging files are
-present before doing any cleanup or commits.
-
-### 2. Review and clean the plugin wiring
-
-The implementation was added under sandbox restrictions that prevented editing
-or deleting some existing/new files reliably. Before release, review the loader
-modules matching:
-
-```text
-thonny/plugins/classroom*.py
-```
-
-In particular, consolidate the standard-input wiring currently spread across
-`classroom_input.py`, `classroom_io.py`, and `classroom_keyboard.py`. Preserve the
-final thread-safe behavior from `classroom_keyboard.py` and remove redundant
-loaders after confirming plugin initialization order.
-
-Run a formatter after cleanup. `black` was not installed in the Linux
-environment, so formatting has not yet been verified with the project formatter.
-
-### 3. Stage the private Windows bundle
+### 1. Stage the private Windows bundle
 
 Create this structure outside normal Git history:
 
 ```text
 app/
   thonny/
+    thonny.exe
+    python.exe
+    python314.dll
+    Lib/
   runtimes/
-    python/python.exe
     node/node.exe
     go/bin/go.exe
     go/bin/gofmt.exe
@@ -214,12 +200,12 @@ app/
 Use official Windows x86-64 artifacts only. Do not install Node.js or Go globally,
 change PATH, write registry entries, or put the GGUF in Git.
 
-### 4. Pin and verify artifacts
+### 2. Pin and verify artifacts
 
 Create `checksums.json` containing official SHA-256 values for at least:
 
 ```text
-runtimes/python/python.exe
+thonny/python.exe
 runtimes/node/node.exe
 runtimes/go/bin/go.exe
 tutor/llama-cli.exe
@@ -237,7 +223,7 @@ python packaging/windows/classroom/verify_release.py app checksums.json
 
 Do not produce the release ZIP until this succeeds.
 
-### 5. Run source verification on Windows
+### 3. Re-run source verification before release
 
 ```powershell
 python -m unittest -v test_classroom.py test_classroom_model.py test_classroom_packaging.py
@@ -249,7 +235,7 @@ git diff --check
 Install the development formatter only if needed for source development; it must
 not become a learner-facing dependency.
 
-### 6. Perform real learner-flow testing
+### 4. Perform real learner-flow testing
 
 Launch the bundled application without relying on globally installed runtimes.
 Verify:
@@ -279,7 +265,7 @@ Test at least these failures:
 - JavaScript `ReferenceError` and `SyntaxError`.
 - Go undefined name and compile syntax error.
 
-### 7. Produce and validate the portable ZIP
+### 5. Produce and validate the portable ZIP
 
 - Create the Windows x86-64 portable ZIP only after all gates pass.
 - Extract it into a clean directory on a clean Windows 10/11 machine or VM.

@@ -9,7 +9,11 @@ from pathlib import Path
 
 from thonny import get_workbench
 from thonny.plugins.classroom.runtime import application_root
-from thonny.plugins.classroom.tutor import TutorWorkerClient, deterministic_response, render_response
+from thonny.plugins.classroom.tutor import (
+    TutorWorkerClient,
+    deterministic_response,
+    render_response,
+)
 from thonny.plugins.classroom.ui import ClassroomView
 
 
@@ -20,16 +24,25 @@ def _client() -> TutorWorkerClient | None:
     model = tutor_dir / "qwen-coder-1.5b-q4_k_m.gguf"
     if not llama_cli.is_file() or not model.is_file():
         return None
-    command = [sys.executable, "-m", "thonny.plugins.classroom.model_worker",
-               "--llama-cli", str(llama_cli), "--model", str(model)]
+    command = [
+        sys.executable,
+        "-m",
+        "thonny.plugins.classroom.model_worker",
+        "--llama-cli",
+        str(llama_cli),
+        "--model",
+        str(model),
+    ]
     return TutorWorkerClient(command)
 
 
 def _show_tutor(self: ClassroomView, action) -> None:
     diagnostic = self._diagnostic
     if diagnostic is None:
-        self._set_tutor("Run the program first. If it reports an error, I can explain it "
-                        "without writing the solution for you.")
+        self._set_tutor(
+            "Run the program first. If it reports an error, I can explain it "
+            "without writing the solution for you."
+        )
         return
     client = _client()
     hint_count = self._hint_count

@@ -1,0 +1,29 @@
+{
+  "python": {
+    "version": "3.14.6",
+    "url": "https://www.python.org/ftp/python/3.14.6/python-3.14.6-amd64.zip",
+    "sha256": "75afa83f93b284d19040e24bc440ab741c09582c0d5310504d607a4e08c3dbaf"
+  },
+  "node": {
+    "version": "24.16.0",
+    "url": "https://nodejs.org/download/release/v24.16.0/node-v24.16.0-win-x64.zip",
+    "sha256": "edaca9bd58ec8e92037dac4e877d52f6b8f430b81c18b57e264b4e2fb111cd56"
+  },
+  "go": {
+    "version": "1.26.5",
+    "url": "https://go.dev/dl/go1.26.5.windows-amd64.zip",
+    "sha256": "97e6b2a833b6d89f9ff17d25419ac0a7e3b482a044e9ab18cdef834bd834fd38"
+  },
+  "llama_cpp": {
+    "version": "b9637",
+    "commit": "aedb2a5",
+    "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9637/llama-b9637-bin-win-cpu-x64.zip",
+    "sha256": "f7783c2b8c007f95e710ac40f26a24861a80b603b0b739fc54d7c926a4716c1e"
+  },
+  "qwen": {
+    "version": "Qwen2.5-Coder-1.5B-Instruct Q4_K_M",
+    "revision": "edc3bdcfdc6406d6be331753248d4ac9b463cf1b",
+    "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/edc3bdcfdc6406d6be331753248d4ac9b463cf1b/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf?download=true",
+    "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046"
+  }
+}

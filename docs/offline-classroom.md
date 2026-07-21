@@ -25,7 +25,9 @@ Build one Windows 10/11 x86-64 portable directory with this layout:
 
 ```
 app/thonny/
-app/runtimes/python/python.exe
+app/thonny/python.exe
+app/thonny/python314.dll
+app/thonny/Lib/
 app/runtimes/node/node.exe
 app/runtimes/go/bin/go.exe
 app/runtimes/go/bin/gofmt.exe
@@ -36,7 +38,8 @@ app/licenses/
 ```
 
 Set `THONNY_CLASSROOM_ROOT` to `app` when needed. Runtime discovery never changes
-PATH, the registry, or a global installation. Go uses its private GOROOT, a
+PATH, the registry, or a global installation. The Run button reuses the complete
+private Python distribution that launches Thonny. Go uses its private GOROOT, a
 per-user GOCACHE, `GO111MODULE=off`, `GOPROXY=off`, and `GOSUMDB=off`. Node is
 called by its exact bundled path. Python uses the bundled interpreter when
 present and Thonny's interpreter in development builds.

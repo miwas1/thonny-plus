@@ -52,8 +52,18 @@ def extract_response(output: str) -> dict[str, str]:
 
 
 def run(llama_cli: str, model: str, request: dict[str, Any], timeout: float) -> dict[str, str]:
-    command = [llama_cli, "-m", model, "-p", make_prompt(request), "-n", "300",
-               "--temp", "0.2", "--no-display-prompt"]
+    command = [
+        llama_cli,
+        "-m",
+        model,
+        "-p",
+        make_prompt(request),
+        "-n",
+        "300",
+        "--temp",
+        "0.2",
+        "--no-display-prompt",
+    ]
     completed = subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=True)
     return extract_response(completed.stdout)
 
