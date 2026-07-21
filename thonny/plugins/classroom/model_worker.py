@@ -70,6 +70,8 @@ def run(
         "42",
         "--temp",
         "0.2",
+        "-cnv",
+        "-st",
         "--no-display-prompt",
     ]
     completed = subprocess.run(

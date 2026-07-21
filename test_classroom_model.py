@@ -67,6 +67,8 @@ class ClassroomModelWorkerTests(unittest.TestCase):
         self.assertEqual(command[command.index("-n") + 1], "160")
         self.assertEqual(command[command.index("-c") + 1], "2048")
         self.assertIn("-t", command)
+        self.assertIn("-cnv", command)
+        self.assertIn("-st", command)
 
 
 if __name__ == "__main__":
