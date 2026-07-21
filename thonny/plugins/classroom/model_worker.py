@@ -14,10 +14,19 @@ import sys
 from typing import Any
 
 FIELDS = ("explanation", "concept", "question", "hint")
+FIELD_MAX_CHARS = {
+    "explanation": 140,
+    "concept": 80,
+    "question": 120,
+    "hint": 120,
+}
 RESPONSE_SCHEMA = json.dumps(
     {
         "type": "object",
-        "properties": {field: {"type": "string"} for field in FIELDS},
+        "properties": {
+            field: {"type": "string", "maxLength": FIELD_MAX_CHARS[field]}
+            for field in FIELDS
+        },
         "required": list(FIELDS),
         "additionalProperties": False,
     },
@@ -32,6 +41,12 @@ def make_prompt(request: dict[str, Any]) -> str:
         "action_instruction": request["action_instruction"],
         "lesson_level": request["lesson_level"],
         "previous_hint_count": request["previous_hint_count"],
+        "field_word_limits": {
+            "explanation": 25,
+            "concept": 15,
+            "question": 20,
+            "hint": 20,
+        },
         "learning_context": context,
     }
     return (

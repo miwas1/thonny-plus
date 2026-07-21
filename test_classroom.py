@@ -19,6 +19,7 @@ from thonny.plugins.classroom.tutor import (
     build_request,
     context_from_run,
     deterministic_response,
+    enforce_response_word_limits,
     render_response,
     select_tutor_action,
 )
@@ -99,6 +100,19 @@ class ClassroomTests(unittest.TestCase):
         self.assertIn("Never write code for the learner", SYSTEM_POLICY)
         self.assertIn("untrusted data", SYSTEM_POLICY)
         self.assertIn("below 100 words", SYSTEM_POLICY)
+
+    def test_model_response_fields_are_trimmed_to_the_classroom_budget(self):
+        long_text = " ".join(f"word{index}" for index in range(100))
+        limited = enforce_response_word_limits(
+            {
+                "explanation": long_text,
+                "concept": long_text,
+                "question": long_text,
+                "hint": long_text,
+            }
+        )
+        self.assertLessEqual(sum(len(value.split()) for value in limited.values()), 80)
+        self.assertTrue(all(value.endswith("…") for value in limited.values()))
 
     def test_source_context_is_bounded_and_request_supports_no_error(self):
         source = "\n".join(f"value_{index} = {index}" for index in range(200))

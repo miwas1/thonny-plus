@@ -77,6 +77,8 @@ class ClassroomModelWorkerTests(unittest.TestCase):
         schema = json.loads(command[command.index("-j") + 1])
         self.assertEqual(set(schema["required"]), set(FIELDS))
         self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(schema["properties"]["explanation"]["maxLength"], 140)
+        self.assertEqual(schema["properties"]["concept"]["maxLength"], 80)
 
 
 if __name__ == "__main__":

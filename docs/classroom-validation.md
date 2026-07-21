@@ -4,7 +4,7 @@ Validated on 2026-07-21 from a Linux development checkout.
 
 ## Completed locally
 
-- `python -m unittest -v test_classroom.py test_classroom_model.py test_classroom_packaging.py`: 23/23 passed.
+- `python -m unittest -v test_classroom.py test_classroom_model.py test_classroom_packaging.py`: 24/24 passed.
 - Ruff format check: passed for the classroom plugin, packaging scripts, and focused tests.
 - Ruff lint: no issues in the classroom plugin, packaging scripts, or focused tests.
 - Python compile check: passed for the classroom plugin and Windows staging scripts.
