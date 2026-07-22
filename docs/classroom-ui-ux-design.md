@@ -1,4 +1,11 @@
-# Offline Classroom — UI/UX Design
+# Offline Classroom — archived early UI/UX concept
+
+> **Status:** This document records the initial multi-language design
+> exploration. The shipped Build Week product is Python-only and uses Thonny's
+> native Run button and Shell with one contextual **AI Assistant** panel. See
+> [`offline-classroom.md`](offline-classroom.md) and the repository README for
+> the final behaviour. JavaScript/Go controls, the second output pane, and the
+> Coach activity menu described below were deliberately removed.
 
 Design specification for the beginner classroom edition of Thonny with Python,
 JavaScript, and Go support plus a local Qwen-based tutor. This document defines
