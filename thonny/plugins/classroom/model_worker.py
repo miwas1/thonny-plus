@@ -186,7 +186,7 @@ def start_server(llama_server: str, model: str) -> tuple[subprocess.Popen[bytes]
         "-m",
         model,
         "-c",
-        "1024",
+        "1536",
         "-b",
         "512",
         "-ub",
@@ -253,11 +253,17 @@ def run(
         field: int(request["field_word_limits"][field]) for field in fields
     }
     char_limits = {field: max(48, word_limits[field] * 8) for field in fields}
-    requested_words = sum(word_limits[field] for field in fields)
+    # The grammar lets the model fill each field up to its schema character
+    # limit, so budget enough tokens to emit that many characters plus the JSON
+    # braces, quotes, field names, and separators. A budget tied only to the
+    # word count left the small model out of tokens before it could close the
+    # object, which llama.cpp then reports as a truncated ("length") reply.
+    schema_chars = sum(char_limits[field] for field in fields)
+    json_overhead = 24 + 16 * len(fields)
     payload = {
         "model": "local-qwen",
         "messages": [{"role": "user", "content": make_prompt(request)}],
-        "max_tokens": min(384, max(96, requested_words * 3 + 48)),
+        "max_tokens": min(512, max(256, schema_chars + json_overhead)),
         "temperature": 0.2,
         "seed": 42,
         "stream": True,

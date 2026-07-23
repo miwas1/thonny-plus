@@ -93,7 +93,7 @@ class ClassroomModelWorkerTests(unittest.TestCase):
         self.assertEqual(partials[-1], "Compare the spelling.")
         http_request = opener.return_value.open.call_args.args[0]
         payload = json.loads(http_request.data)
-        self.assertEqual(payload["max_tokens"], 108)
+        self.assertEqual(payload["max_tokens"], 256)
         self.assertTrue(payload["stream"])
         schema = response_schema(("hint",), {"hint": 160})
         self.assertEqual(payload["response_format"]["schema"], schema)
@@ -215,7 +215,7 @@ class ClassroomModelWorkerTests(unittest.TestCase):
         self.assertIn("stderr=subprocess.DEVNULL", worker)
         self.assertIn('"--cache-prompt"', worker)
         self.assertIn('"--cache-reuse"', worker)
-        self.assertIn('"1024"', worker)
+        self.assertIn('"1536"', worker)
         self.assertIn('"--flash-attn"', worker)
         self.assertIn('"--mlock"', worker)
         self.assertIn('"--no-webui"', worker)
