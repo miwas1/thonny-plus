@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, replace
 from typing import Callable, Literal
 
 from thonny.plugins.classroom.adapters import Diagnostic
+from thonny.plugins.classroom.model_worker import limit_words
 
 SYSTEM_POLICY = """You are a patient programming tutor for first-time learners.
 
@@ -85,6 +86,23 @@ FIELD_WORD_LIMITS = {
     "hint": 20,
 }
 
+TutorLength = Literal["concise", "detailed"]
+
+# Concise keeps the original tight classroom budget; detailed lets the tutor give
+# a fuller explanation when the learner asks for it. Both the streamed partial and
+# the final response are trimmed against the same resolved limits, so they agree.
+LENGTH_MULTIPLIERS: dict[TutorLength, float] = {
+    "concise": 1.0,
+    "detailed": 2.6,
+}
+
+
+def resolve_field_word_limits(
+    fields: tuple[str, ...], length: TutorLength = "concise"
+) -> dict[str, int]:
+    multiplier = LENGTH_MULTIPLIERS.get(length, 1.0)
+    return {field: round(FIELD_WORD_LIMITS[field] * multiplier) for field in fields}
+
 RESPONSE_FIELDS: dict[TutorAction, tuple[str, ...]] = {
     "explain": ("explanation", "question"),
     "hint": ("hint",),
@@ -112,17 +130,13 @@ class TutorResponse:
 
 
 def enforce_response_word_limits(
-    data: dict[str, object], fields: tuple[str, ...] | None = None
+    data: dict[str, object],
+    fields: tuple[str, ...] | None = None,
+    limits: dict[str, int] | None = None,
 ) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for field in fields or tuple(FIELD_WORD_LIMITS):
-        limit = FIELD_WORD_LIMITS[field]
-        text = str(data[field]).strip()
-        words = text.split()
-        if len(words) > limit:
-            text = " ".join(words[:limit]).rstrip(".,;:") + "…"
-        result[field] = text
-    return result
+    fields = fields or tuple(FIELD_WORD_LIMITS)
+    limits = limits or {field: FIELD_WORD_LIMITS[field] for field in fields}
+    return {field: limit_words(str(data[field]), limits[field]) for field in fields}
 
 
 @dataclass(frozen=True)
@@ -409,6 +423,7 @@ def build_request(
     action: TutorAction,
     lesson_level: str = "beginner",
     previous_hint_count: int = 0,
+    length: TutorLength = "concise",
 ) -> dict[str, object]:
     if isinstance(context, Diagnostic):
         context = TutorContext(context.language, context.relevant_code, context)
@@ -443,9 +458,9 @@ def build_request(
         "lesson_level": lesson_level,
         "previous_hint_count": previous_hint_count,
         "response_fields": RESPONSE_FIELDS[action],
-        "field_word_limits": {
-            field: FIELD_WORD_LIMITS[field] for field in RESPONSE_FIELDS[action]
-        },
+        "field_word_limits": resolve_field_word_limits(
+            RESPONSE_FIELDS[action], length
+        ),
         "context": payload,
     }
 
@@ -558,8 +573,11 @@ class TutorWorkerClient:
         previous_hint_count: int = 0,
         timeout: float = 30.0,
         on_partial: Callable[[str], None] | None = None,
+        length: TutorLength = "concise",
     ) -> TutorResponse:
-        payload = build_request(context, action, lesson_level, previous_hint_count)
+        payload = build_request(
+            context, action, lesson_level, previous_hint_count, length
+        )
         with self._request_lock:
             self.start(timeout)
             process = self._process
@@ -592,16 +610,15 @@ class TutorWorkerClient:
                     f"Local tutor worker exceeded its {timeout:g}-second limit"
                 ) from exc
         fields = RESPONSE_FIELDS[action]
-        limited = enforce_response_word_limits(data, fields)
+        limits = resolve_field_word_limits(fields, length)
+        limited = enforce_response_word_limits(data, fields, limits)
         response = TutorResponse(
             **{field: limited.get(field, "") for field in FIELD_WORD_LIMITS}
         )
         if not all(getattr(response, field) for field in fields):
             raise ValueError("Tutor response contained an empty field")
-        if len(" ".join(limited.values()).split()) > sum(
-            FIELD_WORD_LIMITS[field] for field in fields
-        ):
-            raise ValueError("Tutor response exceeded the 100-word classroom limit")
+        if len(" ".join(limited.values()).split()) > sum(limits.values()):
+            raise ValueError("Tutor response exceeded the requested length budget")
         return response
 
     def close(self) -> None:

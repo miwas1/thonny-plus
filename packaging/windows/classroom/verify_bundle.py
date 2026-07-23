@@ -17,7 +17,7 @@ REQUIRED = (
     "thonny/python314.dll",
     "thonny/Lib",
     "tutor/llama-server.exe",
-    "tutor/qwen-coder-1.5b-q4_k_m.gguf",
+    "tutor/qwen-coder-0.5b-q8_0.gguf",
     "licenses",
 )
 

@@ -33,7 +33,7 @@ second output pane, free-form chatbot, automatic fix, code completion, or
 solution generation.
 
 Everything runs on the learner's computer. The installer bundles Python,
-llama.cpp, and Qwen2.5-Coder-1.5B-Instruct Q4_K_M. Learner code is sent only to a
+llama.cpp, and Qwen2.5-Coder-0.5B-Instruct Q8_0. Learner code is sent only to a
 loopback process and never to a cloud service.
 
 ## How we built it

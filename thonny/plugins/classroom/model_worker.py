@@ -26,13 +26,29 @@ FIELD_MAX_CHARS = {
 }
 
 
-def response_schema(fields: tuple[str, ...]) -> dict[str, object]:
+def limit_words(text: str, limit: int) -> str:
+    """Trim ``text`` to ``limit`` words. Shared by the stream and the final render.
+
+    Both the streamed partial (this worker) and the final response (the client)
+    call this with the same per-request limits so the two always agree.
+    """
+    text = str(text).strip()
+    words = text.split()
+    if len(words) > limit:
+        return " ".join(words[:limit]).rstrip(".,;:") + "…"
+    return text
+
+
+def response_schema(
+    fields: tuple[str, ...], char_limits: dict[str, int] | None = None
+) -> dict[str, object]:
     if not fields or any(field not in FIELDS for field in fields):
         raise ValueError(f"Unsupported response fields: {fields!r}")
+    limits = char_limits or FIELD_MAX_CHARS
     return {
         "type": "object",
         "properties": {
-            field: {"type": "string", "maxLength": FIELD_MAX_CHARS[field]}
+            field: {"type": "string", "maxLength": int(limits[field])}
             for field in fields
         },
         "required": list(fields),
@@ -129,10 +145,19 @@ def _partial_json_string(output: str, field: str) -> str:
     return "".join(decoded).strip()
 
 
-def partial_response_text(output: str, fields: tuple[str, ...]) -> str:
-    return "\n\n".join(
-        text for field in fields if (text := _partial_json_string(output, field))
-    )
+def partial_response_text(
+    output: str,
+    fields: tuple[str, ...],
+    word_limits: dict[str, int] | None = None,
+) -> str:
+    parts: list[str] = []
+    for field in fields:
+        text = _partial_json_string(output, field)
+        if word_limits is not None and field in word_limits:
+            text = limit_words(text, int(word_limits[field]))
+        if text:
+            parts.append(text)
+    return "\n\n".join(parts)
 
 
 def _hidden_process_options() -> dict[str, Any]:
@@ -161,11 +186,16 @@ def start_server(llama_server: str, model: str) -> tuple[subprocess.Popen[bytes]
         "-m",
         model,
         "-c",
-        "1792",
+        "1024",
         "-b",
-        "256",
+        "512",
+        "-ub",
+        "512",
         "-t",
         str(threads),
+        "--flash-attn",
+        "on",
+        "--mlock",
         "--host",
         "127.0.0.1",
         "--port",
@@ -219,18 +249,21 @@ def run(
     on_partial: Callable[[str], None] | None = None,
 ) -> dict[str, str]:
     fields = tuple(str(field) for field in request["response_fields"])
-    word_limits = request["field_word_limits"]
-    requested_words = sum(int(word_limits[field]) for field in fields)
+    word_limits = {
+        field: int(request["field_word_limits"][field]) for field in fields
+    }
+    char_limits = {field: max(48, word_limits[field] * 8) for field in fields}
+    requested_words = sum(word_limits[field] for field in fields)
     payload = {
         "model": "local-qwen",
         "messages": [{"role": "user", "content": make_prompt(request)}],
-        "max_tokens": min(144, max(64, requested_words * 2 + 32)),
+        "max_tokens": min(384, max(96, requested_words * 3 + 48)),
         "temperature": 0.2,
         "seed": 42,
         "stream": True,
         "response_format": {
             "type": "json_schema",
-            "schema": response_schema(fields),
+            "schema": response_schema(fields, char_limits),
         },
     }
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -261,7 +294,7 @@ def run(
                     continue
                 output += content
                 if on_partial is not None:
-                    partial = partial_response_text(output, fields)
+                    partial = partial_response_text(output, fields, word_limits)
                     if partial and partial != last_partial:
                         on_partial(partial)
                         last_partial = partial

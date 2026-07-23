@@ -13,7 +13,7 @@ and one useful next step. Learners can also select code or Shell output and ask
 for a focused explanation.
 
 The assistant runs entirely on the learner's Windows computer. It uses a
-bundled Qwen2.5-Coder 1.5B model through llama.cpp, requires no account or API
+bundled Qwen2.5-Coder 0.5B model through llama.cpp, requires no account or API
 key, and does not send code to a cloud service.
 
 * Download / project site: https://thonny-plus.odebunmiwasiu124.chatgpt.site
@@ -96,7 +96,7 @@ Run and test from source
 
 The source project requires Python 3.11 or newer. A system Tk installation is
 also required on Linux. The complete local-model experience is easiest to test
-with the Windows installer because the multi-gigabyte model and downloaded
+with the Windows installer because the GGUF model and downloaded
 runtime binaries are deliberately excluded from Git.
 
 .. code-block:: console

@@ -35,7 +35,7 @@ def verify_release(root: Path, checksums: dict[str, str]) -> list[str]:
     required_checksums = (
         "thonny/python.exe",
         "tutor/llama-server.exe",
-        "tutor/qwen-coder-1.5b-q4_k_m.gguf",
+        "tutor/qwen-coder-0.5b-q8_0.gguf",
     )
     errors.extend(
         f"No pinned checksum for {relative}"

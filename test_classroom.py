@@ -12,14 +12,18 @@ from thonny.plugins.classroom.runtime import (
     bundled_adapters,
     language_for_path,
 )
+from thonny.plugins.classroom.model_worker import partial_response_text
 from thonny.plugins.classroom.tutor import (
     ACTIONS,
+    FIELD_WORD_LIMITS,
     SYSTEM_POLICY,
+    TutorResponse,
     build_request,
     context_from_run,
     deterministic_response,
     enforce_response_word_limits,
     render_response,
+    resolve_field_word_limits,
     select_tutor_action,
 )
 from thonny.plugins.classroom.ui import ClassroomView
@@ -96,6 +100,30 @@ class ClassroomTests(unittest.TestCase):
         )
         self.assertLessEqual(sum(len(value.split()) for value in limited.values()), 80)
         self.assertTrue(all(value.endswith("…") for value in limited.values()))
+
+    def _rendered_final(self, data, fields, limits, action):
+        limited = enforce_response_word_limits(data, fields, limits)
+        response = TutorResponse(
+            **{field: limited.get(field, "") for field in FIELD_WORD_LIMITS}
+        )
+        return render_response(response, action)
+
+    def test_streamed_partial_matches_final_render_at_any_length(self):
+        import json
+
+        long_hint = " ".join(f"word{index}" for index in range(80))
+        output = json.dumps({"hint": long_hint})
+        for length in ("concise", "detailed"):
+            limits = resolve_field_word_limits(("hint",), length)
+            streamed = partial_response_text(output, ("hint",), limits)
+            final = self._rendered_final({"hint": long_hint}, ("hint",), limits, "hint")
+            self.assertEqual(streamed, final, length)
+            self.assertTrue(streamed.endswith("…"), length)
+        # Detailed must actually allow a longer answer than concise.
+        self.assertGreater(
+            resolve_field_word_limits(("hint",), "detailed")["hint"],
+            resolve_field_word_limits(("hint",), "concise")["hint"],
+        )
 
     def test_source_context_is_bounded_and_request_supports_no_error(self):
         source = "\n".join(f"value_{index} = {index}" for index in range(200))
