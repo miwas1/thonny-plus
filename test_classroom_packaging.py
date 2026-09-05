@@ -70,7 +70,7 @@ class PackagingGateTests(unittest.TestCase):
         self.assertNotIn("runtimes/node/node.exe", joined)
         self.assertNotIn("runtimes/go/bin/go.exe", joined)
         self.assertIn("tutor/llama-server.exe", joined)
-        self.assertIn("qwen-coder-1.5b-q4_k_m.gguf", joined)
+        self.assertIn("qwen-coder-0.5b-q8_0.gguf", joined)
         self.assertIn("QWEN-LICENSE.txt", joined)
         self.assertIn("basedpyright/langserver.py", joined)
         self.assertIn("ruff/__main__.py", joined)

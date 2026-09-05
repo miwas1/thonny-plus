@@ -220,7 +220,7 @@ def exercise_model(app: Path) -> dict[str, object]:
         "--llama-server",
         str(llama_server),
         "--model",
-        str(app / "tutor" / "qwen-coder-1.5b-q4_k_m.gguf"),
+        str(app / "tutor" / "qwen-coder-0.5b-q8_0.gguf"),
         "--timeout",
         "540",
     ]

@@ -23,6 +23,8 @@
    * the relevant source line is highlighted;
    * a short explanation appears automatically in the AI Assistant;
    * the contextual action becomes **Give me one hint**;
+   * ticking **Detailed** in the header yields a longer answer, and the streamed
+     text matches the final answer;
    * no browser, login, API key, second Run button, or second output pane appears.
 
 7. Select `return "Hello " + name` in the editor. Confirm the assistant action
@@ -38,8 +40,8 @@ cache for subsequent model requests.
 
 ## Source-only verification
 
-The repository intentionally excludes the multi-gigabyte GGUF model and
-downloaded Windows runtimes. Source tests do not require them:
+The repository intentionally excludes the GGUF model and downloaded Windows
+runtimes. Source tests do not require them:
 
 ```bash
 python -m unittest -v test_classroom.py test_classroom_model.py test_classroom_packaging.py

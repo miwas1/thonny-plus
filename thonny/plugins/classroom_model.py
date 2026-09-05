@@ -9,6 +9,7 @@ import threading
 from thonny import get_workbench
 from thonny.plugins.classroom.runtime import application_root
 from thonny.plugins.classroom.tutor import (
+    TutorContext,
     TutorWorkerClient,
     deterministic_response,
     render_response,
@@ -25,7 +26,7 @@ def _client() -> TutorWorkerClient | None:
     tutor_dir = application_root() / "tutor"
     suffix = ".exe" if os.name == "nt" else ""
     llama_server = tutor_dir / f"llama-server{suffix}"
-    model = tutor_dir / "qwen-coder-1.5b-q4_k_m.gguf"
+    model = tutor_dir / "qwen-coder-0.5b-q8_0.gguf"
     if not llama_server.is_file() or not model.is_file():
         return None
     command = [
@@ -90,6 +91,7 @@ def _show_tutor(self: ClassroomView, action, context=None) -> None:
                 previous_hint_count=hint_count,
                 timeout=180.0,
                 on_partial=stream_partial,
+                length=self.tutor_length(),
             )
         except Exception:
             response = deterministic_response(context, action)
@@ -132,6 +134,16 @@ def _prewarm(event=None) -> None:
     def warm() -> None:
         try:
             client.start(timeout=600.0)
+            # Prime the prompt cache with the constant system-policy prefix so the
+            # first real request only has to prefill its short variable tail.
+            try:
+                client.ask(
+                    TutorContext(language="python", source_excerpt="print('hi')"),
+                    "hint",
+                    timeout=120.0,
+                )
+            except Exception:
+                pass
             status = "Local AI ready"
         except Exception:
             status = "Built-in guidance · local AI was unavailable"

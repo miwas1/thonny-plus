@@ -11,9 +11,9 @@
     "sha256": "f7783c2b8c007f95e710ac40f26a24861a80b603b0b739fc54d7c926a4716c1e"
   },
   "qwen": {
-    "version": "Qwen2.5-Coder-1.5B-Instruct Q4_K_M",
-    "revision": "edc3bdcfdc6406d6be331753248d4ac9b463cf1b",
-    "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/edc3bdcfdc6406d6be331753248d4ac9b463cf1b/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf?download=true",
-    "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046"
+    "version": "Qwen2.5-Coder-0.5B-Instruct Q8_0",
+    "revision": "ebb2015119c907b064c512bf053e945850b5875f",
+    "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/ebb2015119c907b064c512bf053e945850b5875f/qwen2.5-coder-0.5b-instruct-q8_0.gguf?download=true",
+    "sha256": "e1a77721fa97d412f121878223eec81fb4ae6f271e18f922d746711f67b344d1"
   }
 }

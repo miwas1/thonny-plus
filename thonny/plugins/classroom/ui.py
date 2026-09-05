@@ -15,6 +15,7 @@ from thonny.plugins.classroom.adapters import (
 from thonny.plugins.classroom.tutor import (
     TutorAction,
     TutorContext,
+    TutorLength,
     TutorTrigger,
     bounded_text,
     context_from_run,
@@ -50,6 +51,7 @@ class ClassroomView(ttk.Frame):
         self._tutor_request_id = 0
         self._run_in_progress = False
         self._selection_origin: str | None = None
+        self._detailed = tk.BooleanVar(value=False)
 
         header = ttk.Frame(self)
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=(9, 6))
@@ -57,11 +59,14 @@ class ClassroomView(ttk.Frame):
         ttk.Label(header, text="Python assistant", font="TkHeadingFont").grid(
             row=0, column=0, sticky="w"
         )
+        ttk.Checkbutton(
+            header, text="Detailed", variable=self._detailed
+        ).grid(row=0, column=1, sticky="e", padx=(0, 8))
         ttk.Button(header, text="● Private", command=self._show_privacy).grid(
-            row=0, column=1, sticky="e"
+            row=0, column=2, sticky="e"
         )
         ttk.Label(header, textvariable=self.status).grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            row=1, column=0, columnspan=3, sticky="w", pady=(4, 0)
         )
 
         self.tutor_text = tk.Text(
@@ -358,6 +363,9 @@ class ClassroomView(ttk.Frame):
 
     def set_ai_status(self, text: str) -> None:
         self.status.set(text)
+
+    def tutor_length(self) -> TutorLength:
+        return "detailed" if self._detailed.get() else "concise"
 
     def _highlight_line(self, line: int | None) -> None:
         editor = self._editor()

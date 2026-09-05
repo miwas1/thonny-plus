@@ -25,7 +25,7 @@ $required = @(
     "thonny\thonny.exe",
     "thonny\python.exe",
     "tutor\llama-server.exe",
-    "tutor\qwen-coder-1.5b-q4_k_m.gguf"
+    "tutor\qwen-coder-0.5b-q8_0.gguf"
 )
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $bundle $relative) -PathType Leaf)) {

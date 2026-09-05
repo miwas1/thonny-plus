@@ -22,7 +22,7 @@ MANIFEST = HERE / "artifacts.json"
 CHECKSUM_TARGETS = (
     "thonny/python.exe",
     "tutor/llama-server.exe",
-    "tutor/qwen-coder-1.5b-q4_k_m.gguf",
+    "tutor/qwen-coder-0.5b-q8_0.gguf",
 )
 
 
@@ -232,7 +232,7 @@ def write_licenses(
             f"{manifest['llama_cpp']['commit']}/LICENSE"
         ),
         "QWEN-LICENSE.txt": (
-            "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/"
+            "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/"
             f"{manifest['qwen']['revision']}/LICENSE?download=true"
         ),
     }
@@ -261,7 +261,7 @@ def stage(app: Path, cache: Path, install_deps: bool, resume: bool = False) -> N
 
     copy_contents(extracted / "python", app / "thonny")
     copy_contents(extracted / "llama_cpp", app / "tutor")
-    shutil.copy2(downloads["qwen"], app / "tutor" / "qwen-coder-1.5b-q4_k_m.gguf")
+    shutil.copy2(downloads["qwen"], app / "tutor" / "qwen-coder-0.5b-q8_0.gguf")
     install_thonny(app)
     if install_deps:
         install_dependencies(app)

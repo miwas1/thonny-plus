@@ -78,7 +78,7 @@ Thonny is credited in the main README and its MIT licence is preserved.
 * Added a persistent local worker and loopback-only llama.cpp server, hidden
   Windows subprocesses, single model load, prompt-cache reuse, prewarming, and
   streaming updates.
-* Integrated Qwen2.5-Coder-1.5B-Instruct Q4_K_M without an account, API key, or
+* Integrated Qwen2.5-Coder-0.5B-Instruct Q8_0 without an account, API key, or
   cloud request.
 
 ### Windows distribution
